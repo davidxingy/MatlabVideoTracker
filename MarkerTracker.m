@@ -400,6 +400,29 @@ handles.FPSText.String=[num2str(handles.UserData.frameRate) ' fps'];
 
 
 
+function handles=displayMessage(handles, message, textColor)
+% function to display a warning or status message to the user in the GUI
+% the function will not update hObject, so be sure to call guidata in the
+% calling function!
+
+% set display textbox string to the message
+if isa(message, 'char') || isa(message, 'string')
+    handles.MessageTextBox.String = message;
+else
+    handles.MessageTextBox.String = 'Unable to display message!';
+end
+
+% set display message to the color if specified
+if (nargin == 3) && all(size(textColor) == [1 3]) &&...
+        all([0 0 0] <= textColor) && all(textColor <= [1 1 1])
+    handles.MessageTextBox.ForegroundColor = textColor;
+else
+    handles.MessageTextBox.ForegroundColor = [0 0 0];
+end
+    
+
+
+
 function handles=changeFrame(handles,frameNumber,displayNewFrame)
 % function to change current frame. *frame 1 is time 0.00
 % note that this function will update the currentFrameInd variable in 
@@ -1103,6 +1126,11 @@ badMarkers=find(trackedJumps>max(prevTrackedJumps,[],2)*handles.UserData.maxJump
 if ~isempty(badMarkers)
     handles.UserData.trackedData(trackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
     handles.UserData.trackedBoxSizes(trackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
+    
+    %let user know via GUI message
+    removedMarkers = join(string({handles.UserData.markersInfo(trackedInds(badMarkers)).name}), ', ');
+    handles = displayMessage(handles, ['Markers removed due to large jump: ' removedMarkers{1}...
+        ' in Frame ' num2str(handles.UserData.currentFrameInd)], [1 0 0]);
 end
 
 %now after all the markers have been updated, first check if there were any
@@ -1308,9 +1336,10 @@ function handles=markerLostCallback(lostMarkerInds,handles)
 % stop autorun
 setappdata(handles.figure1,'autorunEnabled',false);
 
-% warn user
-lostMarkerNames=string({handles.UserData.markersInfo(lostMarkerInds).name});
-warndlg(['Markers Lost: ' char(join(lostMarkerNames,', '))])
+%let user know via GUI message
+lostMarkerNames = string({handles.UserData.markersInfo(lostMarkerInds).name});
+handles = displayMessage(handles, ['Markers Lost: ' char(join(lostMarkerNames,', ')) ...
+    ' in Frame ' num2str(handles.UserData.currentFrameInd)], [1 0 0]);
 
 
 
