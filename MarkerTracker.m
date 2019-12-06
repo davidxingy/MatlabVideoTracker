@@ -1085,22 +1085,24 @@ end
 
 % remove any makers that made large sudden jumps
 % calculate jump distance
-trackedJumps=squeeze(diff(handles.UserData.trackedData(...
-    trackedInds,handles.UserData.currentFrameInd-1:handles.UserData.currentFrameInd,:),1,2));
+trackedJumps=reshape(diff(handles.UserData.trackedData(...
+    trackedInds,handles.UserData.currentFrameInd-1:handles.UserData.currentFrameInd,:),1,2),...
+    length(trackedInds),2);
 trackedJumps=sqrt(trackedJumps(:,1).^2+trackedJumps(:,2).^2);
 
 % get all previous jump distances
 prevTrackedJumps=diff(handles.UserData.trackedData(...
     trackedInds,1:handles.UserData.currentFrameInd-1,:),1,2);
-prevTrackedJumps=squeeze(sqrt(prevTrackedJumps(:,:,1).^2+prevTrackedJumps(:,:,2).^2));
+prevTrackedJumps=reshape(sqrt(prevTrackedJumps(:,:,1).^2+prevTrackedJumps(:,:,2).^2),...
+    size(prevTrackedJumps,1),size(prevTrackedJumps,2));
 
 % get tracked markers that exceed the jump limit
 badMarkers=find(trackedJumps>max(prevTrackedJumps,[],2)*handles.UserData.maxJumpMult);
 
 % remove those markers
 if ~isempty(badMarkers)
-    handles.UserData.trackedData(trackedInds(badMarkers),handles.UserData.currentFrame,:)=nan;
-    handles.UserData.trackedBoxSizes(trackedInds(badMarkers),handles.UserData.currentFrame,:)=nan;
+    handles.UserData.trackedData(trackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
+    handles.UserData.trackedBoxSizes(trackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
 end
 
 %now after all the markers have been updated, first check if there were any
