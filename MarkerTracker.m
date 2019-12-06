@@ -214,7 +214,7 @@ guidata(hObject, handles);
 
 
 function Keypress_Callback(src,callbackdata,hObject)
-% go to next of previous frame
+% go to next or previous frame
 handles=guidata(hObject);
 if ~handles.UserData.videoLoaded
     return
@@ -225,19 +225,18 @@ if ~strcmp(callbackdata.Key,'rightarrow') && ~strcmp(callbackdata.Key,'leftarrow
     return
 end
 
-if getappdata(handles.figure1,'evaluatingKeyPress')
-    disp('ignored')
-    return
-else
-    %     disp(handles.UserData.keypressCallbackRunning)
-    setappdata(handles.figure1,'evaluatingKeyPress',true)
-end
-
+% if getappdata(handles.figure1,'evaluatingKeyPress')
+%     disp('ignored')
+%     return
+% else
+%     %     disp(handles.UserData.keypressCallbackRunning)
+%     setappdata(handles.figure1,'evaluatingKeyPress',true)
+% end
 
 if strcmp(callbackdata.Key,'rightarrow')
     %next frame (if not end of video)
     if handles.UserData.currentFrameInd==handles.UserData.nFrames
-        setappdata(handles.figure1,'evaluatingKeyPress',false)
+%         setappdata(handles.figure1,'evaluatingKeyPress',false)
         return;
     end
     handles=changeFrame(handles,handles.UserData.currentFrameInd+1,true);
@@ -252,7 +251,7 @@ if strcmp(callbackdata.Key,'rightarrow')
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE IT WILL CONTINUE READING
     %KEY STROKES AND QUEUING THEM EVEN THOUGH I SET BUSYACTION TO CANCEL
     %RATHER THAN QUEUE
-    pause(0.01)
+%     pause(0.01)
     
 elseif strcmp(callbackdata.Key,'leftarrow')
     %previous frame (if not beginning of video)
@@ -277,7 +276,7 @@ elseif strcmp(callbackdata.Key,'downarrow')
 end
 
 % handles.UserData.keypressCallbackRunning=false;
-setappdata(handles.figure1,'evaluatingKeyPress',false)
+% setappdata(handles.figure1,'evaluatingKeyPress',false)
 
 guidata(hObject, handles);
 
@@ -418,7 +417,7 @@ handles.UserData.currentFrameInd=frameNumber;
 if frameNumber-previousFrameNumber==1
     try
         frame=handles.UserData.videoReader.readFrame;
-    catch
+    catch ME
         handles.UserData.currentFrameInd=previousFrameNumber;
         setappdata(handles.figure1,'evaluatingKeyPress',false)
         return
@@ -430,6 +429,13 @@ else
     handles.UserData.videoReader.CurrentTime=max((frameNumber-2)/handles.UserData.frameRate,0);
     while handles.UserData.videoReader.CurrentTime~=(frameNumber-1)/handles.UserData.frameRate
         frame=handles.UserData.videoReader.readFrame;
+        
+        if handles.UserData.videoReader.CurrentTime>(frameNumber-1)/handles.UserData.frameRate
+            setappdata(handles.figure1,'evaluatingKeyPress',false)
+            disp(['Failed to move to frame ' num2str(frameNumber)])
+            return;
+        end
+        
     end
     frame=handles.UserData.videoReader.readFrame;
 end
@@ -819,7 +825,7 @@ uistack(handles.UserData.epochPositionLine_h,'top') %bring line to top
 
 function handles=changeSelectedMarkers(handles,markerInds)
 
-if ~handles.UserData.dataInitialized
+if ~handles.UserData.dataLoaded
     return
 end
 
@@ -838,12 +844,14 @@ handles.MarkerTypeSelect.Value=find(strcmpi(handles.UserData.markersInfo(...
 handles.UsePredictiveModelCheckBox.Value=handles.UserData.markersInfo(markerInds(1)).usePredModel;
 handles.UseKinematicModelCheckBox.Value=handles.UserData.markersInfo(markerInds(1)).useKinModel;
 
-handles.SearchRadiusInput.String=...s
+handles.SearchRadiusInput.String=...
     num2str(handles.UserData.markersInfo(markerInds(1)).searchRadius);
 
 % draw marker cursor and marker box
-drawFrame(handles);
-handles=drawMarkersAndSegments(handles);
+if handles.UserData.dataInitialized
+    drawFrame(handles);
+    handles=drawMarkersAndSegments(handles);
+end
 
 
 
@@ -1345,6 +1353,9 @@ function FrameSlider_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'Value') returns position of slider
 %        get(hObject,'Min') and get(hObject,'Max') to determine range of slider
+
+pause(0.01)
+
 handles=guidata(hObject);
 
 value=round(get(hObject,'Value'));
@@ -1702,6 +1713,7 @@ else
     return;
 end
 
+handles.UserData.dataLoaded=true;
 
 % initialize makers list
 handles.PointsList.String={handles.UserData.markersInfo.name}';
@@ -1709,7 +1721,6 @@ handles.PointsList.String={handles.UserData.markersInfo.name}';
 % set marker to first
 handles=changeSelectedMarkers(handles,1);
 
-handles.UserData.dataLoaded=true;
 guidata(hObject, handles);
 
 
