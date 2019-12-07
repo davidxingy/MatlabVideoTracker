@@ -22,7 +22,7 @@ function varargout = MarkerTracker(varargin)
 
 % Edit the above text to modify the response to help MarkerTracker
 
-% Last Modified by GUIDE v2.5 26-Sep-2018 18:41:23
+% Last Modified by GUIDE v2.5 06-Dec-2019 19:48:40
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -3008,6 +3008,77 @@ handles.UserData.kinModelDefined=true;
 guidata(hObject,handles);
 
 
+
+% --- Executes on button press in EpochInputButton.
+function EpochInputButton_Callback(hObject, eventdata, handles)
+% hObject    handle to EpochInputButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles=guidata(hObject);
+
+% only if video loaded
+if ~handles.UserData.videoLoaded
+    return
+end
+
+% default answer is the already defined epochs
+default='[';
+for iEpoch=1:size(handles.UserData.epochs,1)
+    default=[default num2str(handles.UserData.epochs(iEpoch,1)), ', ',...
+        num2str(handles.UserData.epochs(iEpoch,2))];
+    
+    if iEpoch~=size(handles.UserData.epochs,1)
+        default=[default '; '];
+    end
+end
+default(end+1)=']';
+
+% call dialog
+typedString=inputdlg('Enter Epoch Edges (using normal array input syntax)',...
+    'Epoch Input',1,{default});
+
+% if there was nothing, remove all epochs
+if isempty(typedString)
+    handles.UserData.epochs=[];
+    return
+end
+
+% cast the typed in string
+typedString=string(typedString{1});
+
+% now try to parse in the string using str2num
+epochs=str2num(typedString);
+
+if isempty(epochs)
+    warndlg('Unable to parse input!')
+    return
+end
+
+% check that the parsed array is Nx2, has no nans, is all intergers, and
+% the second row is always bigger than the first row. Also values must be
+% between 1 and the number of frames
+if size(epochs,2)~=2
+    warndlg('Input matrix must be size Nx2!')
+    return
+elseif any(epochs(:,2)<epochs(:,1))
+    warndlg('Values in the second row must be larger than the corresponding value in the first row!');
+    return
+elseif any(round(epochs(:))-epochs(:)>0.0001)
+    warndlg('Values must be intergers!');
+    return
+elseif min(epochs(:))<1 || max(epochs(:))>handles.UserData.nFrames
+    warndlg(['Values must be between 1 and the total number of frames ('...
+        num2str(handles.UserData.nFrames) ')!']);
+    return
+end
+
+% passed all the checks, save into handles
+handles.UserData.epochs=sortrows(round(epochs));
+
+%replot epoch bar
+handles=drawEpochBar(handles);
+
+guidata(hObject,handles)
 
 
 % 
