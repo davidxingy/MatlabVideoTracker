@@ -91,47 +91,48 @@ function MarkerTracker_OpeningFcn(hObject, eventdata, handles, varargin)
 handles.output = hObject;
 
 % GUI general settings
-handles.UserData.VersionNumber='1.0';
+handles.UserData.VersionNumber = '1.0';
 
-handles.UserData.bufferSize=30;
-handles.UserData.autosaveIntervalMin=3;
-handles.UserData.plotMarkerSize=8;
-handles.UserData.plotMarkerEstSize=9;
-handles.UserData.plotMarkerWidth=2;
-handles.UserData.plotMarkerColor='y';
-handles.UserData.plotMarkerEstColor='m';
-handles.UserData.plotSegmentWidth=0.7;
-handles.UserData.plotSegmentColor='r';
-handles.UserData.plotCurrentMarkerSize=10;
-handles.UserData.plotCurrentMarkerColor='w';
-handles.UserData.epochPatchColor1=[0.000,  0.447,  0.741];
-handles.UserData.epochPatchColor2=[0.929,  0.694,  0.125];
-handles.UserData.contrastEnhancementLevel=0.01;
-handles.UserData.defaultMarkerSize=[30 30];
-handles.UserData.channelNames={... %make sure to define these in findMarkerPos function!
+handles.UserData.bufferSize = 30;
+handles.UserData.autosaveIntervalMin = 3;
+handles.UserData.lostMarkerStopAutorun = false;
+handles.UserData.plotMarkerSize = 8;
+handles.UserData.plotMarkerEstSize = 9;
+handles.UserData.plotMarkerWidth = 2;
+handles.UserData.plotMarkerColor = 'y';
+handles.UserData.plotMarkerEstColor = 'm';
+handles.UserData.plotSegmentWidth = 0.7;
+handles.UserData.plotSegmentColor = 'r';
+handles.UserData.plotCurrentMarkerSize = 10;
+handles.UserData.plotCurrentMarkerColor = 'w';
+handles.UserData.epochPatchColor1 = [0.000,  0.447,  0.741];
+handles.UserData.epochPatchColor2 = [0.929,  0.694,  0.125];
+handles.UserData.contrastEnhancementLevel = 0.01;
+handles.UserData.defaultMarkerSize = [30 30];
+handles.UserData.channelNames = {... %make sure to define these in findMarkerPos function!
     'Green','Red','Red/Green','Blue','Hue','Saturation','Value','Grey'};
-handles.UserData.nColorChannels=length(handles.UserData.channelNames);
+handles.UserData.nColorChannels = length(handles.UserData.channelNames);
 
-handles.UserData.predictiveModelNames={... %make sure to define these in trainModelbutton and autoincrement functions!
+handles.UserData.predictiveModelNames = {... %make sure to define these in trainModelbutton and autoincrement functions!
     'Spline'};
 
-handles.UserData.splineNPoints=5; %for spline trajectory prediction, number of points to fit
-handles.UserData.splineMAOrder=3; %for spline trajectory prediction, number of points for the pre-fit MA filter
+handles.UserData.splineNPoints = 5; %for spline trajectory prediction, number of points to fit
+handles.UserData.splineMAOrder = 3; %for spline trajectory prediction, number of points for the pre-fit MA filter
 
-handles.UserData.kinModel.minInputs=3; %for kinematic model estimation with kNN, the min number of input features to the kNN
-handles.UserData.kinModel.classifierK=5; %for kinematic model estimation, the number of kNN points
-handles.UserData.kinModel.defaultAngleTol=20; %the maximum standard deviation of the kNN point outputs, in degrees
+handles.UserData.kinModel.minInputs = 3; %for kinematic model estimation with kNN, the min number of input features to the kNN
+handles.UserData.kinModel.classifierK = 5; %for kinematic model estimation, the number of kNN points
+handles.UserData.kinModel.defaultAngleTol = 20; %the maximum standard deviation of the kNN point outputs, in degrees
 
-handles.UserData.minMarkerDist=5; %the minimum number of pixels two markers can be within each other
-handles.UserData.autorunDispInterval=10; %number of frames to track before updating display during autorun
-handles.UserData.minConvex=0.8; %minimun ratio of area to convext area of blobs before trying to separate into two blobs
+handles.UserData.minMarkerDist = 5; %the minimum number of pixels two markers can be within each other
+handles.UserData.autorunDispInterval = 10; %number of frames to track before updating display during autorun
+handles.UserData.minConvex = 0.8; %minimun ratio of area to convext area of blobs before trying to separate into two blobs
 
-handles.UserData.lengthOutlierMult=1.3; %multiplier to determine the maximum length between pairs in kin model
-handles.UserData.maxJumpMult=2; %multiplier to determine the maximum allowable jumps
+handles.UserData.lengthOutlierMult = 1.3; %multiplier to determine the maximum length between pairs in kin model
+handles.UserData.maxJumpMult = 2; %multiplier to determine the maximum allowable jumps
 
 % Some developer options
-handles.GUIOptions.plotPredLocs=false;
-handles.GUIOptions.kinModelNoNans=false;
+handles.GUIOptions.plotPredLocs = false;
+handles.GUIOptions.kinModelNoNans = false;
 
 % initialize properties
 handles.UserData.markersInfo=struct([]);
@@ -1334,7 +1335,9 @@ end
 function handles=markerLostCallback(lostMarkerInds,handles)
 
 % stop autorun
-setappdata(handles.figure1,'autorunEnabled',false);
+if handles.UserData.lostMarkerStopAutorun
+    setappdata(handles.figure1,'autorunEnabled',false);
+end
 
 %let user know via GUI message
 lostMarkerNames = string({handles.UserData.markersInfo(lostMarkerInds).name});
@@ -2241,12 +2244,16 @@ xLimListener = addlistener( timePlotax2, 'XLim', 'PostSet',...
 yLimListener = addlistener( timePlotax2, 'YLim', 'PostSet',...
     @(src,evt) timePlotAxisChangedCallback(src,evt,timePlotax1,locationLine_h,fps));
 
+
+
 % listener function to lock time and frame axes, and update line
 function timePlotAxisChangedCallback(src,evt,timePlotax1,locationLine_h,fps)
     
 timePlotax1.XLim=evt.AffectedObject.XLim/fps;
 timePlotax1.YLim=evt.AffectedObject.YLim;
 locationLine_h.YData=evt.AffectedObject.YLim;
+
+
 
 % keypress callback for alt to let user click on plot to move frame to
 % clicked location
