@@ -96,7 +96,7 @@ handles.UserData.VersionNumber = '1.0';
 handles.UserData.bufferSize = 30;
 handles.UserData.autosaveIntervalMin = 3;
 handles.UserData.lostMarkerStopAutorun = false;
-handles.UserData.plotMarkerSize = 8;
+handles.UserData.plotMarkerSize = 4;
 handles.UserData.plotMarkerEstSize = 9;
 handles.UserData.plotMarkerWidth = 2;
 handles.UserData.plotMarkerColor = 'y';
@@ -694,7 +694,7 @@ end
 % draw marker if it's tracked
 markerExists=true;
 if ~isnan(markersPos(handles.UserData.currentMarkerInds(1),1))
-    markerType='.';
+    markerType='o';
     markerColor=handles.UserData.plotMarkerColor;
     markerSize=handles.UserData.plotMarkerSize;
     currentMarkerPosZoom=markersPosZoom(handles.UserData.currentMarkerInds(1),:);
@@ -715,7 +715,8 @@ if markerExists
     plot(currentMarkerPosZoom(1),...
         currentMarkerPosZoom(2),...
         markerType,'MarkerSize',markerSize,...
-        'Color',markerColor,...
+        'MarkerEdgeColor','k',...
+        'MarkerFaceColor',markerColor,...
         'PickableParts','none');
     
     %put current marker selection cursor
@@ -754,8 +755,8 @@ if handles.UserData.drawStickFigure
     axes(handles.FrameAxes)
     hold on
     %tracked markers
-    plot(markersPosZoom(:,1),markersPosZoom(:,2),'.','MarkerSize',handles.UserData.plotMarkerSize,...
-        'Color',handles.UserData.plotMarkerColor,'PickableParts','none');
+    plot(markersPosZoom(:,1),markersPosZoom(:,2),'o','MarkerSize',handles.UserData.plotMarkerSize,...
+        'MarkerEdgeColor','k','MarkerFaceColor',handles.UserData.plotMarkerColor,'PickableParts','none');
     
     %model estimated markers
     plot(markersPosEstZoom(isnan(markersPosZoom(:,1)),1),markersPosEstZoom(isnan(markersPosZoom(:,1)),2),...
