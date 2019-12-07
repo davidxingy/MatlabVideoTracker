@@ -2076,11 +2076,19 @@ else
 end
 
 frameCounter=0;
+
+%get epochs, or if no epochs defined, just set the epoch to the whole video
+if isempty(handles.UserData.epochs)
+    epochs = [1 handles.UserData.nFrames];
+else
+    epochs = handles.UserData.epochs;
+end
+
 while getappdata(handles.figure1,'autorunEnabled')
     
     %increment frame (if not end of video or last epoch)
     if handles.UserData.currentFrameInd==handles.UserData.nFrames ||...
-        handles.UserData.currentFrameInd==max(handles.UserData.epochs(:,2))
+        handles.UserData.currentFrameInd==max(epochs(:,2))
         
         setappdata(handles.figure1,'autorunEnabled',false);
         break;
@@ -2096,9 +2104,9 @@ while getappdata(handles.figure1,'autorunEnabled')
     end
     
     %go to next epoch if at the end of an epoch
-    atEpochEnd=find(handles.UserData.currentFrameInd==handles.UserData.epochs(:,2),1);
+    atEpochEnd = find(handles.UserData.currentFrameInd==epochs(:,2),1);
     if ~isempty(atEpochEnd)
-        handles=changeFrame(handles,handles.UserData.epochs(atEpochEnd,1), dispFrame);
+        handles=changeFrame(handles, epochs(atEpochEnd,1), dispFrame);
     else
         %just go to next frame
         handles=changeFrame(handles,handles.UserData.currentFrameInd+1, dispFrame);
