@@ -1558,13 +1558,44 @@ if (ind==1)
     % initialize a new session
     vars=load(fullfile(path,file));
     
-    if ~isfield(vars,'MARKERTRACKERGUI_UserData') && ~isfield(vars,'MARKERTRACKERGUI_MarkerNames')
+    if ~isfield(vars,'MARKERTRACKERGUI_UserData') && ~isfield(vars,'MARKERTRACKERGUI_MarkerNames') ...
+            && ~isfield(vars,'MARKERTRACKERGUI_Segments')
         
-        warndlg('.mat file must contain MARKERTRACKERGUI_UserData or MARKERTRACKERGUI_MarkerNames variable!')
+        warndlg(['.mat file must contain MARKERTRACKERGUI_UserData, ' ...
+            'MARKERTRACKERGUI_MarkerNames or MARKERTRACKERGUI_Segments variable!'])
         return;
         
-    elseif ~isfield(vars,'MARKERTRACKERGUI_UserData')
-        %no data from previous session, just want to initialize markers
+    elseif isfield(vars,'MARKERTRACKERGUI_UserData')
+        
+        %data from a previous session, just put to UserData and do checks
+        % TODO: Checks+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        handles.UserData=vars.MARKERTRACKERGUI_UserData;
+        
+        %update gui with video info
+        handles=updateVidDisplayInfo(handles);
+        
+        %change to the current frame and marker of the session
+        loadedFrameInd=handles.UserData.currentFrameInd;
+        handles.UserData.currentFrameInd=nan; %so no previous frame checks
+        handles=changeFrame(handles,loadedFrameInd,true);
+        handles=changeSelectedMarkers(handles,handles.UserData.currentMarkerInds);
+        
+        %if for kin models, if defined and/or trained, set background of
+        %the buttons to green
+        if handles.UserData.kinModelDefined
+            handles.DefineModelButton.BackgroundColor='g';
+        end
+        if handles.UserData.kinModelTrained
+            handles.TrainModelButton.BackgroundColor='g';
+        end
+       
+        %set time info
+        timeInfo=clock;
+        handles.UserData.lastSavedTime=timeInfo(4)*60+timeInfo(5);
+        
+    elseif isfield(vars,'MARKERTRACKERGUI_MarkerNames')
+       
+        %not data from previous session, just want to initialize markers
         handles.UserData.nMarkers=length(vars.MARKERTRACKERGUI_MarkerNames);
         
         for iMarker=1:handles.UserData.nMarkers
@@ -1592,15 +1623,7 @@ if (ind==1)
         
         %set kin model possible anchors to marker names
         handles.UserData.kinModel.allPossibleAnchors={handles.UserData.markersInfo.name}';
-        
-        %next load in line segments (connecting line markers) if there's any
-        if isfield(vars,'MARKERTRACKERGUI_Segments')
-            for iSeg=1:size(vars.MARKERTRACKERGUI_Segments,1)
-                handles.UserData.segments(iSeg,:)=[find(strcmp(vars.MARKERTRACKERGUI_Segments{iSeg,1},{markers.name})),...
-                    find(strcmp(vars.MARKERTRACKERGUI_Segments{iSeg,2},{markers.name}))];
-            end
-        end
-        
+       
         %initialize data arrays (if we know how many frames there are)
         if handles.UserData.videoLoaded
             handles.UserData.trackedData=NaN(handles.UserData.nMarkers,handles.UserData.nFrames,2);
@@ -1616,32 +1639,57 @@ if (ind==1)
         %set kin model possible anchors to marker names
         handles.UserData.kinModel.allPossibleAnchors={handles.UserData.markersInfo.name}';
         
-    else
-        %data from a previous session, just put to UserData and do checks
-        % TODO: Checks+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        handles.UserData=vars.MARKERTRACKERGUI_UserData;
+    end
+     
+    
+    %next load in line segments (connecting line markers) if there's any
+    if isfield(vars,'MARKERTRACKERGUI_Segments')
         
-        %update gui with video info
-        handles=updateVidDisplayInfo(handles);
-        
-        %change to the current frame and marker of the session
-        loadedFrameInd=handles.UserData.currentFrameInd;
-        handles.UserData.currentFrameInd=nan; %so no previous frame checks
-        handles=changeFrame(handles,loadedFrameInd,true);
-        handles=changeSelectedMarkers(handles,handles.UserData.currentMarkerInds);
-        
-        %if for kin models, if defined and/or trained, set background of
-        %the buttons to green
-        if handles.UserData.kinModelDefined
-            handles.DefineModelButton.BackgroundColor='g';
+        %first there has to be markers already defined
+        if isfield(handles.UserData, 'markersInfo') == 0
+            handles = displayMessage(handles, 'Cannot load in Segments when there''s no markers defined!',...
+                [1 0 0]);
+            return
         end
-        if handles.UserData.kinModelTrained
-            handles.TrainModelButton.BackgroundColor='g';
+        
+        %now load in segments
+        %remove old segment definitions
+        handles.UserData.segments = [];
+        failedSegs = [];
+        failedMarkers = string([]);
+        for iSeg=1:size(vars.MARKERTRACKERGUI_Segments,1)
+            
+            segStart = find(strcmp(vars.MARKERTRACKERGUI_Segments{iSeg,1}, ...
+                {handles.UserData.markersInfo.name}));
+            segEnd = find(strcmp(vars.MARKERTRACKERGUI_Segments{iSeg,2}, ...
+                {handles.UserData.markersInfo.name}));
+            
+            if isempty(segStart)
+                %couldn't find the marker, don't add to segments, and warn
+                %user
+                failedMarkers{end+1} = vars.MARKERTRACKERGUI_Segments{iSeg,1};
+                failedSegs(end+1) = iSeg;
+            elseif isempty(segEnd)
+                failedMarkers{end+1} = vars.MARKERTRACKERGUI_Segments{iSeg,2};
+                failedSegs(end+1) = iSeg;
+            else
+                %found the markers, add segment
+                handles.UserData.segments(end+1,:)=[segStart, segEnd];
+            end
+            
         end
-       
-        %set time info
-        timeInfo=clock;
-        handles.UserData.lastSavedTime=timeInfo(4)*60+timeInfo(5);
+        
+        %warn users if segments couldn't be found
+        if isempty(failedSegs)
+            handles=displayMessage(handles, ...
+                [num2str(size(vars.MARKERTRACKERGUI_Segments,1)) ' segments loaded'], [0 0 0]);
+        else
+            failedMarkers = join(unique(failedMarkers), ', ');
+            failedSegs = unique(failedSegs);
+            handles=displayMessage(handles, ['Failed to add segments: ' num2str(failedSegs) ...
+                ', couldn''t find markers: ' failedMarkers{1}], [1 0 0]);
+        end
+        
     end
     
     
