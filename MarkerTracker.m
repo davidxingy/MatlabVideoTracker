@@ -252,7 +252,7 @@ if strcmp(callbackdata.Key,'rightarrow')
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE IT WILL CONTINUE READING
     %KEY STROKES AND QUEUING THEM EVEN THOUGH I SET BUSYACTION TO CANCEL
     %RATHER THAN QUEUE
-%     pause(0.01)
+    pause(0.01)
     
 elseif strcmp(callbackdata.Key,'leftarrow')
     %previous frame (if not beginning of video)
