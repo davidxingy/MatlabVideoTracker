@@ -1647,7 +1647,7 @@ if (ind==1)
     if isfield(vars,'MARKERTRACKERGUI_Segments')
         
         %first there has to be markers already defined
-        if isfield(handles.UserData, 'markersInfo') == 0
+        if isfield(handles.UserData, 'markersInfo') == 0 || isempty(handles.UserData.markersInfo)
             handles = displayMessage(handles, 'Cannot load in Segments when there''s no markers defined!',...
                 [1 0 0]);
             return
