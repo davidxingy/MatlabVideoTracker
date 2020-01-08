@@ -98,8 +98,9 @@ frame=handles.UserData.currentFrameUnprocessed;
 contrast=handles.UserData.globalContrast;
 brightness=handles.UserData.globalBrightness;
 decorr=handles.UserData.globalDecorr;
+mask=handles.UserData.exclusionMask;
 
-frame=TrackerFunctions.applyImageProcessing(frame, brightness, contrast, decorr);
+frame=TrackerFunctions.applyImageProcessing(frame, brightness, contrast, decorr, mask);
 
 % show
 image(frame)

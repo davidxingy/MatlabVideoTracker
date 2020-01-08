@@ -22,7 +22,7 @@ function varargout = MarkerTracker(varargin)
 
 % Edit the above text to modify the response to help MarkerTracker
 
-% Last Modified by GUIDE v2.5 06-Dec-2019 19:48:40
+% Last Modified by GUIDE v2.5 07-Jan-2020 21:36:53
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -165,6 +165,8 @@ handles.UserData.kinModel.externFileNames={};
 handles.UserData.kinModel.externData={};
 handles.UserData.kinModel.externMarkerNames={};
 handles.UserData.epochs=[];
+handles.UserData.exclusionZones={};
+handles.UserData.exclusionMask=[];
 handles.UserData.kinModelDefined=false;
 handles.UserData.kinModelTrained=false;
 timeInfo=clock;
@@ -630,7 +632,7 @@ handles.UserData.currentFrameUnprocessed=frame;
 % apply image processing
 handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
     handles.UserData.currentFrameUnprocessed, handles.UserData.globalBrightness,...
-    handles.UserData.globalContrast, handles.UserData.globalDecorr);
+    handles.UserData.globalContrast, handles.UserData.globalDecorr, handles.UserData.exclusionMask);
 
 % show frame (or zoomed in frame)
 if displayNewFrame
@@ -1937,7 +1939,7 @@ handles.UserData=MarkerTracker_ImageProcessing(handles.UserData);
 % apply image processing
 handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
     handles.UserData.currentFrameUnprocessed, handles.UserData.globalBrightness,...
-    handles.UserData.globalContrast, handles.UserData.globalDecorr);
+    handles.UserData.globalContrast, handles.UserData.globalDecorr, handles.UserData.exclusionMask);
 
 % redraw frame
 drawFrame(handles)
@@ -3097,6 +3099,129 @@ handles.DefineModelButton.BackgroundColor='g';
 handles.UserData.kinModelDefined=true;
 
 guidata(hObject,handles);
+
+
+
+% --- Executes on button press in AddExclusionButton.
+function AddExclusionButton_Callback(hObject, eventdata, handles)
+% hObject    handle to AddExclusionButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles=guidata(hObject);
+
+% only add if data initialized
+if ~handles.UserData.dataInitialized
+    return
+end
+
+% let user select region
+axes(handles.FrameAxes)
+[mask,selectionX,selectionY]=roipoly;
+
+% cancelled selection, or region wasn't a polygon
+if isempty(selectionX) || sum(sum(mask))==0
+    return
+end
+
+% account for zooming
+if ~isnan(handles.UserData.zoomRect)
+    selectionX=selectionX+handles.UserData.zoomRect(1)-1;
+    selectionY=selectionY+handles.UserData.zoomRect(2)-1;
+end
+
+% save region
+handles.UserData.exclusionZones{end+1}=[selectionX selectionY];
+
+% make new mask for the frame
+handles.UserData.exclusionMask=zeros(handles.UserData.frameSize(2),handles.UserData.frameSize(1));
+for iZone=1:length(handles.UserData.exclusionZones)
+    mask=poly2mask(handles.UserData.exclusionZones{iZone}(:,1),...
+        handles.UserData.exclusionZones{iZone}(:,2),...
+        handles.UserData.frameSize(2),handles.UserData.frameSize(1));
+    handles.UserData.exclusionMask=handles.UserData.exclusionMask | mask;
+end
+
+% update frame with the new mask, and redraw frame
+handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
+    handles.UserData.currentFrameUnprocessed, handles.UserData.globalBrightness,...
+    handles.UserData.globalContrast, handles.UserData.globalDecorr,handles.UserData.exclusionMask);
+
+% redraw
+drawFrame(handles);
+handles=drawMarkersAndSegments(handles);
+
+guidata(hObject,handles)
+
+
+
+% --- Executes on button press in RemoveExclusionButton.
+function RemoveExclusionButton_Callback(hObject, eventdata, handles)
+% hObject    handle to RemoveExclusionButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles=guidata(hObject);
+
+% only do if data initialized
+if ~handles.UserData.dataInitialized
+    return
+end
+
+% if no regions, let user know and return
+if isempty(handles.UserData.exclusionZones)
+    warndlg('No exclusion zones have been defined')
+    return
+end
+
+% let user select point
+axes(handles.FrameAxes)
+[selectionX, selectionY]=getpts;
+
+if isempty(selectionX)
+    return
+elseif length(selectionX)>1
+    warndlg('Please click only one point!')
+    return
+end
+
+% account for zooming
+if ~isnan(handles.UserData.zoomRect)
+    selectionX=selectionX+handles.UserData.zoomRect(1)-1;
+    selectionY=selectionY+handles.UserData.zoomRect(2)-1;
+end
+
+% go through all exclusion zones, and delete the ones that contain the
+% point
+zonesToDelete=[];
+for iZone=1:length(handles.UserData.exclusionZones)
+    mask=poly2mask(handles.UserData.exclusionZones{iZone}(:,1),...
+        handles.UserData.exclusionZones{iZone}(:,2),...
+        handles.UserData.frameSize(2),handles.UserData.frameSize(1));
+    if(mask(round(selectionY),round(selectionX)))
+        zonesToDelete(end+1)=iZone;
+    end
+end
+handles.UserData.exclusionZones(zonesToDelete)=[];
+
+% make new mask for the frame
+handles.UserData.exclusionMask=zeros(handles.UserData.frameSize(2),handles.UserData.frameSize(1));
+for iZone=1:length(handles.UserData.exclusionZones)
+    mask=poly2mask(handles.UserData.exclusionZones{iZone}(:,1),...
+        handles.UserData.exclusionZones{iZone}(:,2),...
+        handles.UserData.frameSize(2),handles.UserData.frameSize(1));
+    handles.UserData.exclusionMask=handles.UserData.exclusionMask | mask;
+end
+
+% update frame with the new mask, and redraw frame
+handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
+    handles.UserData.currentFrameUnprocessed, handles.UserData.globalBrightness,...
+    handles.UserData.globalContrast, handles.UserData.globalDecorr,handles.UserData.exclusionMask);
+
+% redraw
+drawFrame(handles);
+handles=drawMarkersAndSegments(handles);
+
+
+guidata(hObject,handles)
 
 
 

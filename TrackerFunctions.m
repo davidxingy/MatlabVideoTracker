@@ -980,7 +980,7 @@ classdef TrackerFunctions
         % Apply image processing to an input image (contrast, brightness
         % adjustment, color decorrelation)
         %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        function frameAdj=applyImageProcessing(frame, brightness, contrast, decorr)
+        function frameAdj=applyImageProcessing(frame, brightness, contrast, decorr, mask)
 
             frameAdj=frame;
             
@@ -997,6 +997,11 @@ classdef TrackerFunctions
             % apply colorspace decorrelation
             if decorr
                 frameAdj=decorrstretch(frameAdj);
+            end
+            
+            % apply mask
+            if ~isempty(mask)
+                frameAdj=frameAdj.*repmat(uint8(~mask),[1 1 3]);
             end
 
         end
