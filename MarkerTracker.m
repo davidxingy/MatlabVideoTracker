@@ -2200,7 +2200,7 @@ while getappdata(handles.figure1,'autorunEnabled')
     %go to next epoch if at the end of an epoch
     atEpochEnd = find(handles.UserData.currentFrameInd==epochs(:,2),1);
     if ~isempty(atEpochEnd)
-        handles=changeFrame(handles, epochs(atEpochEnd,1), dispFrame);
+        handles=changeFrame(handles, epochs(atEpochEnd+1,1), dispFrame);
     else
         %just go to next frame
         handles=changeFrame(handles,handles.UserData.currentFrameInd+1, dispFrame);
