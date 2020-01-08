@@ -902,6 +902,8 @@ end
 % go through each marker that's set to auto-track
 alreadyTrackedMarkers=[];
 lostMarkerInds=[];
+autoTrackedInds = [];
+
 for iMarker=1:handles.UserData.nMarkers
     if strcmpi(handles.UserData.markersInfo(iMarker).trackType,'auto')
         
@@ -910,6 +912,9 @@ for iMarker=1:handles.UserData.nMarkers
             alreadyTrackedMarkers=[alreadyTrackedMarkers iMarker];
             continue
         end
+        
+        %let the record show that we are tring to auto track this marker
+        autoTrackedInds(end+1) = iMarker;
         
         if handles.UserData.markersInfo(iMarker).usePredModel
             predModelFailed=false; %to keep track of whether the model was ble to predict a new position
@@ -1073,9 +1078,8 @@ end
 % remove any markers that have moved too far away from the kinematic model
 % get the found markers
 markerLocs=squeeze(handles.UserData.trackedData(:,handles.UserData.currentFrameInd,:));
-trackedInds=find(~isnan(markerLocs(:,1)));
-trackedLocs=markerLocs(trackedInds,:);
-trackedNames=string({handles.UserData.markersInfo(trackedInds).name})';
+trackedLocs=markerLocs(autoTrackedInds,:);
+trackedNames=string({handles.UserData.markersInfo(autoTrackedInds).name})';
 
 if handles.UserData.kinModelTrained
     
@@ -1099,10 +1103,10 @@ if handles.UserData.kinModelTrained
     %those markers that have exceded in two or more pairs will be removed
     badMarkers=inputIndMarkerInds(:,excededLengthPairs);
     badMarkers=badMarkers(:);
-    for iMarker=1:length(trackedInds)
+    for iMarker=1:length(autoTrackedInds)
         if sum(badMarkers==iMarker)>=2
-            handles.UserData.trackedData(trackedInds(iMarker),handles.UserData.currentFrameInd,:)=nan;
-            handles.UserData.trackedBoxSizes(trackedInds(iMarker),handles.UserData.currentFrameInd,:)=nan;
+            handles.UserData.trackedData(autoTrackedInds(iMarker),handles.UserData.currentFrameInd,:)=nan;
+            handles.UserData.trackedBoxSizes(autoTrackedInds(iMarker),handles.UserData.currentFrameInd,:)=nan;
         end
     end
     
@@ -1111,13 +1115,13 @@ end
 % remove any makers that made large sudden jumps
 % calculate jump distance
 trackedJumps=reshape(diff(handles.UserData.trackedData(...
-    trackedInds,handles.UserData.currentFrameInd-1:handles.UserData.currentFrameInd,:),1,2),...
-    length(trackedInds),2);
+    autoTrackedInds,handles.UserData.currentFrameInd-1:handles.UserData.currentFrameInd,:),1,2),...
+    length(autoTrackedInds),2);
 trackedJumps=sqrt(trackedJumps(:,1).^2+trackedJumps(:,2).^2);
 
 % get all previous jump distances
 prevTrackedJumps=diff(handles.UserData.trackedData(...
-    trackedInds,1:handles.UserData.currentFrameInd-1,:),1,2);
+    autoTrackedInds,1:handles.UserData.currentFrameInd-1,:),1,2);
 prevTrackedJumps=reshape(sqrt(prevTrackedJumps(:,:,1).^2+prevTrackedJumps(:,:,2).^2),...
     size(prevTrackedJumps,1),size(prevTrackedJumps,2));
 
@@ -1126,11 +1130,11 @@ badMarkers=find(trackedJumps>max(prevTrackedJumps,[],2)*handles.UserData.maxJump
 
 % remove those markers
 if ~isempty(badMarkers)
-    handles.UserData.trackedData(trackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
-    handles.UserData.trackedBoxSizes(trackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
+    handles.UserData.trackedData(autoTrackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
+    handles.UserData.trackedBoxSizes(autoTrackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
     
     %let user know via GUI message
-    removedMarkers = join(string({handles.UserData.markersInfo(trackedInds(badMarkers)).name}), ', ');
+    removedMarkers = join(string({handles.UserData.markersInfo(autoTrackedInds(badMarkers)).name}), ', ');
     handles = displayMessage(handles, ['Markers removed due to large jump: ' removedMarkers{1}...
         ' in Frame ' num2str(handles.UserData.currentFrameInd)], [1 0 0]);
 end
@@ -1144,6 +1148,7 @@ end
 %threshold
 nOverlaps=0;
 overlaps=[];
+
 for iMark1=1:length(trackedLocs)
     for iMark2=(iMark1+1):size(trackedLocs,1)
         dist=norm([trackedLocs(iMark1,:)-trackedLocs(iMark2,:)]);
@@ -1163,7 +1168,7 @@ if nOverlaps>0
     prevMarkerLocsEsts=squeeze(handles.UserData.modelEstData(:,handles.UserData.currentFrameInd-1,:));
     
     prevMarkerLocs(isnan(prevMarkerLocs(:,1)),:)=prevMarkerLocsEsts(isnan(prevMarkerLocs(:,1)),:);
-    if any(isnan(prevMarkerLocs(trackedInds,1)))
+    if any(isnan(prevMarkerLocs(autoTrackedInds,1)))
         warning('No previous maker location or estimate for an auto tracked markers, debug here!')
     end
     
@@ -1172,44 +1177,44 @@ if nOverlaps>0
         
         %if both the markers were already tracked, then don't do any
         %deletion
-        if any(trackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers) &&...
-            any(trackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
+        if any(autoTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers) &&...
+            any(autoTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
             %don't delete
             continue
             
-        elseif any(trackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers)
+        elseif any(autoTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers)
             %delete second one
-            handles.UserData.trackedData(trackedInds(overlaps(iOverlap,2)),...
+            handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,2)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
-            handles.UserData.trackedBoxSizes(trackedInds(overlaps(iOverlap,2)),...
+            handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,2)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
             
-        elseif any(trackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
+        elseif any(autoTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
             %delete first one
-            handles.UserData.trackedData(trackedInds(overlaps(iOverlap,1)),...
+            handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,1)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
-            handles.UserData.trackedBoxSizes(trackedInds(overlaps(iOverlap,1)),...
+            handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,1)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
             
         else
             %delete the further one from the average of the two overlapping
             %locations
             
-            prevPos1=prevMarkerLocs(trackedInds(overlaps(iOverlap,1)),:);
-            prevPos2=prevMarkerLocs(trackedInds(overlaps(iOverlap,2)),:);
+            prevPos1=prevMarkerLocs(autoTrackedInds(overlaps(iOverlap,1)),:);
+            prevPos2=prevMarkerLocs(autoTrackedInds(overlaps(iOverlap,2)),:);
             avePos=(trackedLocs(overlaps(iOverlap,1),:)+trackedLocs(overlaps(iOverlap,2),:))/2;
             
             if norm([prevPos1 - avePos]) > norm([prevPos2 - avePos])
                 %previous location of 1 is futher away, remove 1
-                handles.UserData.trackedData(trackedInds(overlaps(iOverlap,1)),...
+                handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,1)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
-                handles.UserData.trackedBoxSizes(trackedInds(overlaps(iOverlap,1)),...
+                handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,1)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
             else
                 %otherwise, remove 2
-                handles.UserData.trackedData(trackedInds(overlaps(iOverlap,2)),...
+                handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,2)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
-                handles.UserData.trackedBoxSizes(trackedInds(overlaps(iOverlap,2)),...
+                handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,2)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
             end
         end
