@@ -496,6 +496,7 @@ classdef TrackerFunctions
             %split up all found Anchors to each marker
             allAnchorsFound=mat2cell(allAnchorsFound,anchorBoundaries,1)';
             outputInds=nan(length(desiredMarkerNames),2); %set all to nan for now
+            outputAnchorInds = [];
             
             for iMarker=1:length(desiredMarkerNames)
                 %for each desired marker, get the tracked anchor for that marker with
