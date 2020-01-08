@@ -900,16 +900,15 @@ if (minsPastMidnight-handles.UserData.lastSavedTime)>=handles.UserData.autosaveI
 end
 
 % go through each marker that's set to auto-track
-alreadyTrackedMarkers=[];
 lostMarkerInds=[];
 autoTrackedInds = [];
+alreadyTrackedMarkers = find(~isnan(handles.UserData.trackedData(:,handles.UserData.currentFrameInd,1)));
 
 for iMarker=1:handles.UserData.nMarkers
     if strcmpi(handles.UserData.markersInfo(iMarker).trackType,'auto')
         
         %skip if marker is already tracked
         if ~isnan(handles.UserData.trackedData(iMarker,handles.UserData.currentFrameInd,1))
-            alreadyTrackedMarkers=[alreadyTrackedMarkers iMarker];
             continue
         end
         
@@ -1132,11 +1131,6 @@ badMarkers=find(trackedJumps>max(prevTrackedJumps,[],2)*handles.UserData.maxJump
 if ~isempty(badMarkers)
     handles.UserData.trackedData(autoTrackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
     handles.UserData.trackedBoxSizes(autoTrackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
-    
-    %let user know via GUI message
-    removedMarkers = join(string({handles.UserData.markersInfo(autoTrackedInds(badMarkers)).name}), ', ');
-    handles = displayMessage(handles, ['Markers removed due to large jump: ' removedMarkers{1}...
-        ' in Frame ' num2str(handles.UserData.currentFrameInd)], [1 0 0]);
 end
 
 %now after all the markers have been updated, first check if there were any
@@ -1149,9 +1143,16 @@ end
 nOverlaps=0;
 overlaps=[];
 
-for iMark1=1:length(trackedLocs)
-    for iMark2=(iMark1+1):size(trackedLocs,1)
-        dist=norm([trackedLocs(iMark1,:)-trackedLocs(iMark2,:)]);
+allTrackedInds = find(~isnan(handles.UserData.trackedData(:,handles.UserData.currentFrameInd,1)));
+allTrackedLocs = handles.UserData.trackedData(allTrackedInds,handles.UserData.currentFrameInd,:);
+allTrackedLocs = reshape(allTrackedLocs, [length(allTrackedInds), 2]);
+removedOverlapMarkers = [];
+
+for iMark1=1:size(allTrackedLocs,1)
+    
+    %find and threshold distances between each of the tracked positions
+    for iMark2=(iMark1+1):size(allTrackedLocs,1)
+        dist=norm([allTrackedLocs(iMark1,:)-allTrackedLocs(iMark2,:)]);
         if dist<handles.UserData.minMarkerDist
             nOverlaps=nOverlaps+1;
             overlaps(nOverlaps,:)=[iMark1,iMark2];
@@ -1159,7 +1160,7 @@ for iMark1=1:length(trackedLocs)
     end
 end
 
-%if they are, the marker that was closest to the the current position
+%if there's overlap, the marker that was closest to the the current position
 %in the previous frame is considered the correct actual marker
 if nOverlaps>0
     
@@ -1177,51 +1178,87 @@ if nOverlaps>0
         
         %if both the markers were already tracked, then don't do any
         %deletion
-        if any(autoTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers) &&...
-            any(autoTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
+        if any(allTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers) &&...
+            any(allTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
             %don't delete
             continue
             
-        elseif any(autoTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers)
+        elseif any(allTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers)
             %delete second one
-            handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,2)),...
+            handles.UserData.trackedData(allTrackedInds(overlaps(iOverlap,2)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
-            handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,2)),...
+            handles.UserData.trackedBoxSizes(allTrackedInds(overlaps(iOverlap,2)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
             
-        elseif any(autoTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
+            removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,2));
+            
+        elseif any(allTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
             %delete first one
-            handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,1)),...
+            handles.UserData.trackedData(allTrackedInds(overlaps(iOverlap,1)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
-            handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,1)),...
+            handles.UserData.trackedBoxSizes(allTrackedInds(overlaps(iOverlap,1)),...
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
+            
+            removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,1));
             
         else
             %delete the further one from the average of the two overlapping
             %locations
             
-            prevPos1=prevMarkerLocs(autoTrackedInds(overlaps(iOverlap,1)),:);
-            prevPos2=prevMarkerLocs(autoTrackedInds(overlaps(iOverlap,2)),:);
-            avePos=(trackedLocs(overlaps(iOverlap,1),:)+trackedLocs(overlaps(iOverlap,2),:))/2;
+            prevPos1=prevMarkerLocs(allTrackedInds(overlaps(iOverlap,1)),:);
+            prevPos2=prevMarkerLocs(allTrackedInds(overlaps(iOverlap,2)),:);
+            avePos=(allTrackedLocs(overlaps(iOverlap,1),:)+allTrackedLocs(overlaps(iOverlap,2),:))/2;
             
             if norm([prevPos1 - avePos]) > norm([prevPos2 - avePos])
                 %previous location of 1 is futher away, remove 1
-                handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,1)),...
+                handles.UserData.trackedData(allTrackedInds(overlaps(iOverlap,1)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
-                handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,1)),...
+                handles.UserData.trackedBoxSizes(allTrackedInds(overlaps(iOverlap,1)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
+                
+                removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,1));
             else
                 %otherwise, remove 2
-                handles.UserData.trackedData(autoTrackedInds(overlaps(iOverlap,2)),...
+                handles.UserData.trackedData(allTrackedInds(overlaps(iOverlap,2)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
-                handles.UserData.trackedBoxSizes(autoTrackedInds(overlaps(iOverlap,2)),...
+                handles.UserData.trackedBoxSizes(allTrackedInds(overlaps(iOverlap,2)),...
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
+                
+                removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,2));
             end
         end
         
     end
     
 end
+    
+%let user know via GUI message if any markers were removed due to large
+%jumps or overlaps
+removedJumpMarkers = join(string({handles.UserData.markersInfo(autoTrackedInds(badMarkers)).name}), ', ');
+
+removedOverlapMarkers = join(string(...
+    {handles.UserData.markersInfo(removedOverlapMarkers).name}), ', ');
+
+if ~isempty(removedJumpMarkers) 
+    
+    removedMarkersMesg = ['Markers removed due to large jump: ' removedJumpMarkers{1}];
+    
+    if ~isempty(removedOverlapMarkers)
+        removedMarkersMesg = [removedMarkersMesg ', Markers removed due to overlap: ' removedOverlapMarkers{1}...
+            ' in Frame ' num2str(handles.UserData.currentFrameInd)];
+    end
+        
+    handles = displayMessage(handles, removedMarkersMesg, [1 0 0]);
+
+elseif ~isempty(removedOverlapMarkers)
+    
+    removedMarkersMesg = ['Markers removed due to overlap: ' removedOverlapMarkers{1}...
+        ' in Frame ' num2str(handles.UserData.currentFrameInd)];
+    
+    handles = displayMessage(handles, removedMarkersMesg, [1 0 0]);
+    
+end
+
 
 
 % if there were any markers that were missing, try to get an estimate of
