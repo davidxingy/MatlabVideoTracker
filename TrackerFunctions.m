@@ -196,7 +196,7 @@ classdef TrackerFunctions
             if ~isempty(regionIDs)
                 %now, use the blob that is closest to the original estimate
                 %(center of the image)
-                imageCent=size(image)/2;
+                imageCent=size(image')/2;
                 centroids=cat(1,stats(regionIDs).Centroid);
                 distances=sqrt(sum((centroids-imageCent).^2,2));
                 [~,finalBlobInd]=min(distances);
