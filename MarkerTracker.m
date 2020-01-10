@@ -22,7 +22,7 @@ function varargout = MarkerTracker(varargin)
 
 % Edit the above text to modify the response to help MarkerTracker
 
-% Last Modified by GUIDE v2.5 07-Jan-2020 21:36:53
+% Last Modified by GUIDE v2.5 09-Jan-2020 17:50:02
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -1328,7 +1328,7 @@ if ~isempty(markerEstInds) && handles.UserData.kinModelTrained
         allTrackedNames,markerEstNames,{handles.UserData.markersInfo(markerEstInds).kinModelAnchors},...
         [handles.UserData.kinModel.anchorNames1; handles.UserData.kinModel.anchorNames2]);
     
-    if ~isempty(inputInds)
+    if ~isempty(inputInds) && ~any(isnan(outputInds))
         %if no inputs available for the kNN, don't bother using the model
         
         %use the input inds to get the data needed for the input of the kNN
@@ -3293,6 +3293,137 @@ handles.UserData.epochs=sortrows(round(epochs));
 
 %replot epoch bar
 handles=drawEpochBar(handles);
+
+guidata(hObject,handles)
+
+
+
+% --- Executes on button press in SplineInterpolateButton.
+function SplineInterpolateButton_Callback(hObject, eventdata, handles)
+% hObject    handle to SplineInterpolateButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles=guidata(hObject);
+
+if ~handles.UserData.dataInitialized
+    return;
+end
+
+%checks
+if handles.UserData.deleteRange(2)<handles.UserData.deleteRange(1)
+    warndlg('Delete range must be increasing!');
+    return;
+elseif (handles.UserData.deleteRange(1)<1)
+    warndlg('Starting frame # must be 1 or greater!');
+    return;
+elseif (handles.UserData.deleteRange(2)>handles.UserData.nFrames)
+    warndlg(['Ending frame # must be ' num2str(handles.UserData.nFrames) ' or less!']);
+    return;
+elseif any(round(handles.UserData.deleteRange)~=handles.UserData.deleteRange)
+    warndlg('Frame numbers must be intergers!')
+    return;
+end
+    
+%Do spline interploation
+% get the data in that range
+frameRange = handles.UserData.deleteRange(1):handles.UserData.deleteRange(2);
+markerData = handles.UserData.trackedData(handles.UserData.currentMarkerInds(1),frameRange,:);
+
+markerData = reshape(permute(markerData,[3,2,1]), 2, size(markerData,2));
+
+% get the data that's been tracked
+trackedInds = find(~isnan(markerData(1,:)));
+trackedData = markerData(:,trackedInds);
+
+% the frames that we want to interpolate
+untrackedInds = find(isnan(markerData(1,:)));
+
+% if there are no tracked frames, or no missing frames, don't need to do
+% anything
+if isempty(trackedInds) || isempty(untrackedInds)
+    return;
+end
+
+% do interpolation
+for iDim = 1 : 2
+    interpData = interp1(trackedInds, trackedData(iDim,:), untrackedInds, 'spline');
+    handles.UserData.trackedData(handles.UserData.currentMarkerInds(1),...
+        frameRange(untrackedInds), iDim) = interpData;
+end
+
+% set box size to just be the same box size as the first tracked data point
+handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1), frameRange(untrackedInds), :) = repmat(...
+    handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1), frameRange(trackedInds(1)), :), 1, ...
+    length(untrackedInds), 1);
+
+%redraw
+drawFrame(handles)
+handles=drawMarkersAndSegments(handles);
+
+guidata(hObject,handles)
+
+
+
+% --- Executes on button press in LinearInterpolateButton.
+function LinearInterpolateButton_Callback(hObject, eventdata, handles)
+% hObject    handle to LinearInterpolateButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles=guidata(hObject);
+
+if ~handles.UserData.dataInitialized
+    return;
+end
+
+%checks
+if handles.UserData.deleteRange(2)<handles.UserData.deleteRange(1)
+    warndlg('Delete range must be increasing!');
+    return;
+elseif (handles.UserData.deleteRange(1)<1)
+    warndlg('Starting frame # must be 1 or greater!');
+    return;
+elseif (handles.UserData.deleteRange(2)>handles.UserData.nFrames)
+    warndlg(['Ending frame # must be ' num2str(handles.UserData.nFrames) ' or less!']);
+    return;
+elseif any(round(handles.UserData.deleteRange)~=handles.UserData.deleteRange)
+    warndlg('Frame numbers must be intergers!')
+    return;
+end
+    
+%Do linear interploation
+% get the data in that range
+frameRange = handles.UserData.deleteRange(1):handles.UserData.deleteRange(2);
+markerData = handles.UserData.trackedData(handles.UserData.currentMarkerInds(1),frameRange,:);
+
+markerData = reshape(permute(markerData,[3,2,1]), 2, size(markerData,2));
+
+% get the data that's been tracked
+trackedInds = find(~isnan(markerData(1,:)));
+trackedData = markerData(:,trackedInds);
+
+% the frames that we want to interpolate
+untrackedInds = find(isnan(markerData(1,:)));
+
+% do interpolation
+for iDim = 1 : 2
+    interpData = interp1(trackedInds, trackedData(iDim,:), untrackedInds, 'linear');
+    handles.UserData.trackedData(handles.UserData.currentMarkerInds(1),...
+        frameRange(untrackedInds), iDim) = interpData;
+end
+
+% set box size to just be the same box size as the first tracked data point
+handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1), frameRange(untrackedInds), :) = repmat(...
+    handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1), frameRange(trackedInds(1)), :), 1, ...
+    length(untrackedInds), 1);
+
+
+%redraw
+drawFrame(handles)
+handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
 
