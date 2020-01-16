@@ -1010,7 +1010,7 @@ classdef TrackerFunctions
         %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         % Write data to simi file
         %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        function success=writePFile(markerNames, markerData)
+        function success=writePFile(markerNames, markerData, videoFPS)
             
             success=false;
             
@@ -1038,19 +1038,21 @@ classdef TrackerFunctions
             
             %if it does, then ask user if they want to overwrite all data,
             %or just newly tracked data
-            header=string([]);
-
+            header = string([]);
+            fileMarkerNames = string([]);
+            fileMarkerIDs = string([]);
+            
             if fID~=-1
                 writeType=questdlg('Do you want overwrite all existing data/markers or just the tracked data in this session?',...
                     'Overwrite Type','Overwrite all','Overwrite newly tracked data','Overwrite newly tracked data');
                 
-                %also get the header
-                while true
-                    header(end+1)=fgetl(fID);
-                    
-                    if isempty(header{end}) || strcmp(header{end},'-1')
-                        break
-                    end
+                %get header, markers, marker IDs, and data from the
+                %existing file
+                [header, fileMarkerNames, fileMarkerIDs, myMarkerInds, myMarkerIndsWithData, existingFileData] = ...
+                    TrackerFunctions.readPFile(markerNames,filename);
+                
+                if isempty(header) || isempty(fileMarkerNames)
+                    return
                 end
                 
                 fclose(fID);
@@ -1068,10 +1070,16 @@ classdef TrackerFunctions
                         string(['FileType' sprintf('\t') 'RawData']);...
                         string(['Version' sprintf('\t') '150']);...
                         string(['Name' sprintf('\t') 'Raw data']);...
-                        string(['Samples\t' num2str(size(markerData,1))]);...
+                        string(['Samples' sprintf('\t') num2str(size(markerData,1))]);...
                         string(['TimeOffset' sprintf('\t') '0.000000']);...
-                        "SamplesPerSecond";...
-                        string(['Count' sprintf('\t') '1'])];
+                        string(['SamplesPerSecond' sprintf('\t') num2str(videoFPS)]);...
+                        string(['Count' sprintf('\t') num2str(size(markerData,2))])];
+                else
+                    %used the header from the old file, just update the
+                    %fps, samples and Count
+                    header(4) = string(['Samples' sprintf('\t') num2str(size(markerData,1))]);
+                    header(6) = string(['SamplesPerSecond' sprintf('\t') num2str(videoFPS)]);
+                    header(7) = string(['Count' sprintf('\t') num2str(size(markerData,2))]);
                 end
                 
                 for iHeaderLine=1:length(header)
@@ -1079,24 +1087,84 @@ classdef TrackerFunctions
                     fprintf(fID,'\n');
                 end
                 
-                %write marker IDs (start from 1000000)
-                fprintf(fID,'\n');
-                fprintf(fID,'%u\t%u',1000000,1000000);
-                for iMarker=2:length(markerNames)
+                %write marker IDs
+                writtenMarkerOrder = [];
+                if isempty(fileMarkerIDs)
+                    
+                    %if there isn't already markers and marker IDs from an
+                    %existing file, make our own IDs (start from 1000000)
+                    fprintf(fID,'%u\t%u',1000000,1000000);
+                    for iMarker=2:length(markerNames)
+                        fprintf(fID,'\t');
+                        fprintf(fID,'\t%u\t%u',1000000+iMarker,1000000+iMarker);
+                    end
+                    
+                    %now write marker names
+                    fprintf(fID,'\n');
+                    fprintf(fID,markerNames{1});
                     fprintf(fID,'\t');
-                    fprintf(fID,'\t%u\t%u',1000000+iMarker,1000000+iMarker);
-                end
-                
-                %now write marker names
-                fprintf(fID,'\n');
-                fprintf(fID,markerNames{1});
-                fprintf(fID,'\t');
-                fprintf(fID,markerNames{1});
-                for iMarker=2:length(markerNames)
-                    fprintf(fID,'\t');
-                    fprintf(fID,markerNames{iMarker});
-                    fprintf(fID,'\t');
-                    fprintf(fID,markerNames{iMarker});
+                    fprintf(fID,markerNames{1});
+                    for iMarker=2:length(markerNames)
+                        fprintf(fID,'\t');
+                        fprintf(fID,markerNames{iMarker});
+                        fprintf(fID,'\t');
+                        fprintf(fID,markerNames{iMarker});
+                    end
+                    
+                    writtenMarkerOrder = 1:length(markerNames);
+
+                else
+                    
+                    %if there were existing markers in the file, get the
+                    %ones that match our marker names and their
+                    %corresponding IDs
+                    markerIDLine = '';
+                    markerNameLine = '';
+                    for iMarker = 1 : length(fileMarkerNames)
+                        
+                        if any(iMarker == myMarkerInds)
+                            %marker in the existing file is one of my
+                            %markers, write the ID and marker name in
+                            if ~isempty(writtenMarkerOrder)
+                                markerIDLine = [markerIDLine sprintf('\t')];
+                                markerNameLine = [markerNameLine sprintf('\t')];
+                            end
+                            markerIDLine = [markerIDLine ...
+                                sprintf([fileMarkerIDs{iMarker} '\t' fileMarkerIDs{iMarker}])];
+                            markerNameLine = [markerNameLine ...
+                                sprintf([fileMarkerNames{iMarker} '\t' fileMarkerNames{iMarker}])];
+                            
+                            %add to marker order list
+                            writtenMarkerOrder(end+1) = find(iMarker == myMarkerInds);
+                        end
+                        
+                    end
+                    
+                    %now, the rest of my markers aren't in the existing
+                    %file, will have to assign them new IDs. Start from 1
+                    %more than the largest ID in the existing file
+                    maxFoundIDs = max(cellfun(@str2num, fileMarkerIDs));
+                    newMarkerInds = setdiff(1:length(markerNames), writtenMarkerOrder);
+                    for iMarker = 1 : length(newMarkerInds)
+                        if ~isempty(writtenMarkerOrder)
+                            markerIDLine = [markerIDLine sprintf('\t')];
+                            markerNameLine = [markerNameLine sprintf('\t')];
+                        end
+                        markerIDLine = [markerIDLine ...
+                            sprintf([num2str(maxFoundIDs+iMarker) '\t' num2str(maxFoundIDs+iMarker)])];
+                        markerNameLine = [markerNameLine ...
+                            sprintf([markerNames{newMarkerInds(iMarker)} '\t'...
+                            markerNames{newMarkerInds(iMarker)}])];
+                        
+                        %add to marker order list
+                        writtenMarkerOrder(end+1) = newMarkerInds(iMarker);
+                    end
+                    
+                    %now write the ID line and marker name line to the file
+                    fprintf(fID,markerIDLine);
+                    fprintf(fID,'\n');
+                    fprintf(fID,markerNameLine);
+                    
                 end
                 
                 %finally, write the data
@@ -1104,9 +1172,9 @@ classdef TrackerFunctions
                 for iFrame=1:size(markerData,1)
                     
                     if any(~isnan(markerData(iFrame,1,:)),3)
-                        fprintf(fID,'%.6f',markerData(iFrame,1,1));
+                        fprintf(fID,'%.6f',markerData(iFrame,writtenMarkerOrder(1),1));
                         fprintf(fID,'\t');
-                        fprintf(fID,'%.6f',markerData(iFrame,1,2));
+                        fprintf(fID,'%.6f',markerData(iFrame,writtenMarkerOrder(1),2));
                     else
                         fprintf(fID,'\t');
                     end
@@ -1114,9 +1182,9 @@ classdef TrackerFunctions
                     for iValue=2:size(markerData,2)
                         fprintf(fID,'\t');
                         if any(~isnan(markerData(iFrame,iValue,:)),3)
-                            fprintf(fID,'%.6f',markerData(iFrame,iValue,1));
+                            fprintf(fID,'%.6f',markerData(iFrame,writtenMarkerOrder(iValue),1));
                             fprintf(fID,'\t');
-                            fprintf(fID,'%.6f',markerData(iFrame,iValue,2));
+                            fprintf(fID,'%.6f',markerData(iFrame,writtenMarkerOrder(iValue),2));
                         else
                             fprintf(fID,'\t');
                         end
@@ -1150,11 +1218,13 @@ classdef TrackerFunctions
         %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         % Read data from simi file
         %~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        function [header,fileMarkerNames,fileMarkerIDs,myMarkerInds,data]=readPFile(myMarkerNames,filename)
+        function [header,fileMarkerNames,fileMarkerIDs,myMarkerInds,myMarkerIndsWithData,data] = ...
+                readPFile(myMarkerNames,filename)
             
             header=string([]);
-            markerNames=string([]);
-            markerIDs=[];
+            fileMarkerNames=string([]);
+            fileMarkerIDs=[];
+            myMarkerInds=[];
             data=[];
 
             %open file
@@ -1186,6 +1256,13 @@ classdef TrackerFunctions
             %load the data
             fclose(fID);
             data=importdata(filename,'\t',length(header)+2);
+            
+            if ~isfield(data,'data')
+                errordlg('Error reading in p file, cannot get data')
+                header = [];
+                fileMarkerNames = [];
+                return;
+            end
             data=data.data;
             
             %not all file markers have corresponding data
@@ -1193,13 +1270,21 @@ classdef TrackerFunctions
             
             %make sure the file's markers names match my marker names, and
             %get the index in the loaded data
-            myMarkerInds=zeros(1,length(myMarkerNames));
+            myMarkerInds = zeros(1,length(myMarkerNames));
+            myMarkerIndsWithData = zeros(1,length(myMarkerNames));
+            
             for iMarker=1:length(myMarkerNames)
-                ind=find(myMarkerNames(iMarker)==fileMarkerNamesWithData,1);
-                if isempty(ind)
+                definedInd = find(myMarkerNames(iMarker)==fileMarkerNames,1);
+                withDataInd = find(myMarkerNames(iMarker)==fileMarkerNamesWithData,1);
+                if isempty(definedInd)
                     myMarkerInds(iMarker)=NaN;
                 else
-                    myMarkerInds(iMarker)=ind;
+                    myMarkerInds(iMarker)=definedInd;
+                end
+                if isempty(withDataInd)
+                    myMarkerIndsWithData(iMarker)=NaN;
+                else
+                    myMarkerIndsWithData(iMarker)=withDataInd;
                 end
             end
             

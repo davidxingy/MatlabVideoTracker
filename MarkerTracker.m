@@ -1750,7 +1750,7 @@ elseif (ind==2)
     
     %read data
     filename=fullfile(path,file);
-    [~,fileMarkerNames,~,myMarkerInds,fileData]=TrackerFunctions.readPFile(myMarkerNames,filename);
+    [~,fileMarkerNames,~,myMarkerInds,myMarkerIndsWithData,fileData]=TrackerFunctions.readPFile(myMarkerNames,filename);
 
     %now in the case were we didnt have markers already defined, define
     %them now with the markers from the p file
@@ -1819,14 +1819,14 @@ elseif (ind==2)
         
         %get the indices where my markers have corresponding data in the
         %loaded file
-        markersInFile=~isnan(myMarkerInds);
-        myMarkerInds(isnan(myMarkerInds))=[];
+        markersInFile=~isnan(myMarkerIndsWithData);
+        myMarkerIndsWithData(isnan(myMarkerIndsWithData))=[];
         
         %save the data from the file to the data arrays        
         handles.UserData.trackedData(markersInFile,1:size(fileData,1),1)=...
-            fileData(:,myMarkerInds*2-1)'*handles.UserData.frameSize(1);
+            fileData(:,myMarkerIndsWithData*2-1)'*handles.UserData.frameSize(1);
         handles.UserData.trackedData(markersInFile,1:size(fileData,1),2)=...
-            fileData(:,myMarkerInds*2)'*handles.UserData.frameSize(2);
+            fileData(:,myMarkerIndsWithData*2)'*handles.UserData.frameSize(2);
         
          %for box sizes, just use default box size
             handles.UserData.trackedBoxSizes(markersInFile,1:size(fileData,1),:)=...
@@ -1968,7 +1968,7 @@ markerData=permute(markerData,[2 1 3]);
 
 % get names
 markerNames=string({handles.UserData.markersInfo.name});
-success=TrackerFunctions.writePFile(markerNames, markerData);
+success=TrackerFunctions.writePFile(markerNames, markerData, handles.UserData.frameRate);
 
 if ~success
     warndlg('Error in writing to .p file! Data not exported')
