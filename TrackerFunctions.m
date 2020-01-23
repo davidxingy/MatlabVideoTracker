@@ -31,7 +31,7 @@ classdef TrackerFunctions
                 switch channelNames{iChannel}
                     case 'Red'
                         dispImage=markerImage(:,:,1)-...
-                            markerImage(:,:,2);
+                            uint8(mean(markerImage(:,:,2),3));
                         dispImage(dispImage<0)=0;
                     case 'Green'
                         dispImage=markerImage(:,:,2)-...
