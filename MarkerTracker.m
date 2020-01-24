@@ -22,7 +22,7 @@ function varargout = MarkerTracker(varargin)
 
 % Edit the above text to modify the response to help MarkerTracker
 
-% Last Modified by GUIDE v2.5 09-Jan-2020 17:50:02
+% Last Modified by GUIDE v2.5 23-Jan-2020 18:25:12
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -91,7 +91,7 @@ function MarkerTracker_OpeningFcn(hObject, eventdata, handles, varargin)
 handles.output = hObject;
 
 % GUI general settings
-handles.UserData.VersionNumber = '1.0';
+handles.UserData.VersionNumber = '2.0';
 
 handles.UserData.bufferSize = 30;
 handles.UserData.autosaveIntervalMin = 3;
@@ -3426,6 +3426,128 @@ drawFrame(handles)
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
+
+
+
+% --- Executes on button press in SetLowerRangeButton.
+function SetLowerRangeButton_Callback(hObject, eventdata, handles)
+% hObject    handle to SetLowerRangeButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% don't do anything if video not loaded
+if ~handles.UserData.videoLoaded
+    return;
+end
+
+% set current frame to the start of the range
+handles.UserData.deleteRange(1) = handles.UserData.currentFrameInd;
+
+% update display
+handles.DeleteStartInput.String = num2str(handles.UserData.currentFrameInd);
+
+guidata(hObject,handles)
+
+
+
+% --- Executes on button press in SetUpperRangeButton.
+function SetUpperRangeButton_Callback(hObject, eventdata, handles)
+% hObject    handle to SetUpperRangeButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% don't do anything if video not loaded
+if ~handles.UserData.videoLoaded
+    return;
+end
+
+% set current frame to the end of the range
+handles.UserData.deleteRange(2) = handles.UserData.currentFrameInd;
+
+% update display
+handles.DeleteEndInput.String = num2str(handles.UserData.currentFrameInd);
+
+guidata(hObject,handles)
+
+
+
+% --- Executes on button press in DeleteAreaButton.
+function DeleteAreaButton_Callback(hObject, eventdata, handles)
+% hObject    handle to DeleteAreaButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% data and video must be loaded in
+if ~handles.UserData.videoLoaded || ~handles.UserData.dataLoaded
+    return
+end
+
+% let user select the area for deletion
+handles = guidata(hObject);
+areaSelection = getrect(handles.FrameAxes);
+
+%with image, it sets the top and left edge to be 0.5. I want them to be 1
+%(since Matlab index by 1)
+areaSelection(1:2) = areaSelection(1:2) + 0.5; 
+
+% now if already zoomed in, then convert to rect of original frame
+if ~isnan(handles.UserData.zoomRect)
+
+    zoomRect = handles.UserData.zoomRect;
+    areaSelection(1:2) = areaSelection(1:2) + zoomRect(1:2) - 1; %-1 since index start at 1
+
+end
+
+% convert to x/y bounds rather than height/width
+areaSelection(3) = areaSelection(1) + areaSelection(3);
+areaSelection(4) = areaSelection(2) + areaSelection(4);
+
+% now go through each marker and see how many points are inside the
+% selection
+msg = 'The following number of points will be deleted: \n';
+for iMarker = 1 : handles.UserData.nMarkers
+    
+    foundInds{iMarker} = find( handles.UserData.trackedData(iMarker,:,1) >= areaSelection(1) & ...
+                               handles.UserData.trackedData(iMarker,:,1) <= areaSelection(3) & ...
+                               handles.UserData.trackedData(iMarker,:,2) >= areaSelection(2) & ...
+                               handles.UserData.trackedData(iMarker,:,2) <= areaSelection(4) );
+                           
+	%if there are any points being deleted, add to msg telling the user
+	if ~isempty(foundInds{iMarker})
+        msg = [ msg handles.UserData.markersInfo(iMarker).name ' : ' ...
+            num2str(length(foundInds{iMarker})) ' points \n' ];
+    end
+        
+end
+
+% warn user
+response = questdlg(sprintf(msg), 'Delete Confirmation', 'Yes', 'No', 'No');
+
+if strcmp(response, 'Yes')
+    
+    %delete the points (set them to nan)
+    for iMarker = 1 : handles.UserData.nMarkers
+        
+        handles.UserData.trackedData(iMarker,foundInds{iMarker},:) = NaN;
+        handles.UserData.modelEstData(iMarker,foundInds{iMarker},:) = NaN;
+        handles.UserData.trackedBoxSizes(iMarker,foundInds{iMarker},:) = NaN;
+        handles.UserData.modelEstBoxSizes(iMarker,foundInds{iMarker},:) = NaN;
+        
+    end
+    
+else
+    
+    return
+    
+end
+
+%redraw
+drawFrame(handles)
+handles = drawMarkersAndSegments(handles);
+
+guidata(hObject,handles)
+
+
 
 
 % 
