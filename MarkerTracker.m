@@ -2549,6 +2549,21 @@ if ~isnan(handles.UserData.zoomRect)
 else
     zoomRect=round(zoomRect);
 end
+
+% anchor corner has to be within the image (bigger than (1,1))
+if zoomRect(1) < 1 || zoomRect(2) < 1
+    handles = displayMessage(handles, 'Please select within the frame', [1 0 0]);
+    return
+end
+
+% also, if the zoom box is outside of frame limits, set them to frame
+% limits
+if zoomRect(1) + zoomRect(3) > handles.UserData.frameSize(1)
+    zoomRect(3) = handles.UserData.frameSize(1) - zoomRect(1);
+end
+if zoomRect(2) + zoomRect(4) > handles.UserData.frameSize(2)
+    zoomRect(4) = handles.UserData.frameSize(2) - zoomRect(2);
+end
 handles.UserData.zoomRect=zoomRect;
 
 % redraw frame
@@ -2556,6 +2571,8 @@ drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles);
+
+
 
 % --- Executes on button press in ZoomOrigButton.
 function ZoomOrigButton_Callback(hObject, eventdata, handles)
@@ -2568,6 +2585,7 @@ drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
+
 
 
 function SearchRadiusInput_Callback(hObject, eventdata, handles)
@@ -2586,6 +2604,8 @@ end
 
 guidata(hObject,handles);
 
+
+
 % --- Executes during object creation, after setting all properties.
 function SearchRadiusInput_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to SearchRadiusInput (see GCBO)
@@ -2597,6 +2617,7 @@ function SearchRadiusInput_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
 
 
 % --- Executes during object creation, after setting all properties.
