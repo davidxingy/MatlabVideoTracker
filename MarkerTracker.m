@@ -733,18 +733,24 @@ end
 %show marker box
 if ~isnan(markersPos(handles.UserData.currentMarkerInds(1),1))
     axes(handles.MarkerAxes);
-    startY=max(1,round(markersPos(handles.UserData.currentMarkerInds(1),2)-markerBoxSize(2)));
-    endY=min(round(markersPos(handles.UserData.currentMarkerInds(1),2)+markerBoxSize(2)),...
+    
+    startY = max(1, floor(markersPos(handles.UserData.currentMarkerInds(1),2)-markerBoxSize(2)));
+    offsetY = max(1, markersPos(handles.UserData.currentMarkerInds(1),2)-markerBoxSize(2)) - startY;
+    endY = min(ceil(markersPos(handles.UserData.currentMarkerInds(1),2)+markerBoxSize(2)), ...
         handles.UserData.frameSize(2));
-    startX=max(1,round(markersPos(handles.UserData.currentMarkerInds(1),1)-markerBoxSize(1)));
-    endX=min(round(markersPos(handles.UserData.currentMarkerInds(1),1)+markerBoxSize(1)),...
+    
+    startX = max(1,floor(markersPos(handles.UserData.currentMarkerInds(1),1)-markerBoxSize(1)));
+    offsetX = max(1, markersPos(handles.UserData.currentMarkerInds(1),1)-markerBoxSize(1)) - startX;
+    endX = min(ceil(markersPos(handles.UserData.currentMarkerInds(1),1)+markerBoxSize(1)),...
         handles.UserData.frameSize(1));
     
     image(handles.UserData.currentFrame(startY:endY,startX:endX,:));
-    
+    xlim([offsetX+0.5 endX-startX+offsetX])
+    ylim([offsetY+0.5 endY-startY+offsetY])
+
     hold on
-    plot(markerBoxSize(1)+1,markerBoxSize(2)+1,'+w');
-    hold off
+    plot(markerBoxSize(1)+1+offsetX,markerBoxSize(2)+1+offsetY,'+w');
+    hold off    
     axis off
 else
     axes(handles.MarkerAxes);
@@ -2222,9 +2228,9 @@ while getappdata(handles.figure1,'autorunEnabled')
     end
     
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE OR IF I MAKE THE PAUSE
-    %LESS THAN 0.02s THE CALLBACK DOESN'T INTERRUPT AND I CAN'T STOP THE
+    %LESS THAN 0.05s THE CALLBACK DOESN'T INTERRUPT AND I CAN'T STOP THE
     %AUTORUN
-    pause(0.02)
+    pause(0.04)
     guidata(hObject,handles);
     
 end
