@@ -209,7 +209,7 @@ classdef TrackerFunctions
                 aspectRatio=stats(regionIDs(finalBlobInd)).AspectRatio;
                 area=stats(regionIDs(finalBlobInd)).Area;
                 mask(:,:)=0;
-                mask(regions.PixelIdxList{finalBlobInd})=1;
+                mask(regions.PixelIdxList{regionIDs(finalBlobInd)})=1;
             end
             
         end
