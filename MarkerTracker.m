@@ -22,7 +22,7 @@ function varargout = MarkerTracker(varargin)
 
 % Edit the above text to modify the response to help MarkerTracker
 
-% Last Modified by GUIDE v2.5 23-Jan-2020 18:25:12
+% Last Modified by GUIDE v2.5 07-Feb-2020 18:12:45
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -169,6 +169,10 @@ handles.UserData.exclusionZones={};
 handles.UserData.exclusionMask=[];
 handles.UserData.kinModelDefined=false;
 handles.UserData.kinModelTrained=false;
+handles.UserData.dataBackup.trackedData = {};
+handles.UserData.dataBackup.boxSizes = {};
+handles.UserData.dataBackup.frameInds = {};
+handles.UserData.dataBackup.markerInds = [];
 timeInfo=clock;
 handles.UserData.lastSavedTime=timeInfo(4)*60+timeInfo(5);
 
@@ -339,6 +343,17 @@ markerProperties.trackType=handles.UserData.markersInfo(handles.UserData.current
     handles.UserData.minConvex);
 
 % save marker location to data array
+% first store overwritten data to backup for Undo button
+handles.UserData.dataBackup.trackedData = ...
+    mat2cell(handles.UserData.trackedData(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:), 1, 1, 2);
+handles.UserData.dataBackup.boxSizes = ...
+    mat2cell(handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:), 1, 1, 2);
+handles.UserData.dataBackup.markerInds = handles.UserData.currentMarkerInds(1);
+handles.UserData.dataBackup.frameInds = {handles.UserData.currentFrameInd};
+
+
 handles.UserData.trackedData(...
     handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)=markerPos;
 handles.UserData.trackedBoxSizes(...
@@ -912,6 +927,12 @@ lostMarkerInds=[];
 autoTrackedInds = [];
 alreadyTrackedMarkers = find(~isnan(handles.UserData.trackedData(:,handles.UserData.currentFrameInd,1)));
 
+% keep track of which markers will have thier data overwritten for the Undo button
+oldDataMarkerInds = [];
+oldDataFrameInds = {};
+oldData = {};
+oldBoxSizes = {};
+
 for iMarker=1:handles.UserData.nMarkers
     if strcmpi(handles.UserData.markersInfo(iMarker).trackType,'auto')
         
@@ -1056,6 +1077,14 @@ for iMarker=1:handles.UserData.nMarkers
             handles.UserData.minConvex);
         
         % save marker location to data array
+        % first save overwritten data to backup for Undo button
+        oldDataMarkerInds(end+1) = iMarker;
+        oldDataFrameInds(end+1) = {handles.UserData.currentFrameInd};
+        oldData(end+1) = {handles.UserData.trackedData(...
+            iMarker,handles.UserData.currentFrameInd,:)};
+        oldBoxSizes(end+1) =  {handles.UserData.trackedBoxSizes(...
+            iMarker,handles.UserData.currentFrameInd,:)};
+
         handles.UserData.trackedData(...
             iMarker,handles.UserData.currentFrameInd,:)=markerPos;
         handles.UserData.trackedBoxSizes(...
@@ -1114,6 +1143,14 @@ if handles.UserData.kinModelTrained
         if sum(badMarkers==iMarker)>=2
             handles.UserData.trackedData(autoTrackedInds(iMarker),handles.UserData.currentFrameInd,:)=nan;
             handles.UserData.trackedBoxSizes(autoTrackedInds(iMarker),handles.UserData.currentFrameInd,:)=nan;
+            
+            %remove these from the backup
+            removeInds = find(autoTrackedInds(iMarker) == oldDataMarkerInds);
+            oldData(removeInds) = [];
+            oldBoxSizes(removeInds) = [];
+            oldDataFrameInds(removeInds) = [];
+            oldDataMarkerInds(removeInds) = [];
+            
         end
     end
     
@@ -1139,6 +1176,13 @@ badMarkers=find(trackedJumps>max(prevTrackedJumps,[],2)*handles.UserData.maxJump
 if ~isempty(badMarkers)
     handles.UserData.trackedData(autoTrackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
     handles.UserData.trackedBoxSizes(autoTrackedInds(badMarkers),handles.UserData.currentFrameInd,:)=nan;
+    
+    %remove these from the backup
+    [~, removeInds, ~] = intersect(oldDataMarkerInds, autoTrackedInds(badMarkers));
+    oldData(removeInds) = [];
+    oldBoxSizes(removeInds) = [];
+    oldDataFrameInds(removeInds) = [];
+    oldDataMarkerInds(removeInds) = [];
 end
 
 %now after all the markers have been updated, first check if there were any
@@ -1189,6 +1233,7 @@ if nOverlaps>0
         if any(allTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers) &&...
             any(allTrackedInds(overlaps(iOverlap,2))==alreadyTrackedMarkers)
             %don't delete
+            removeInds=[];
             continue
             
         elseif any(allTrackedInds(overlaps(iOverlap,1))==alreadyTrackedMarkers)
@@ -1208,7 +1253,7 @@ if nOverlaps>0
                 handles.UserData.currentFrameInd,:)=[NaN NaN];
             
             removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,1));
-            
+                        
         else
             %delete the further one from the average of the two overlapping
             %locations
@@ -1225,6 +1270,7 @@ if nOverlaps>0
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
                 
                 removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,1));
+                
             else
                 %otherwise, remove 2
                 handles.UserData.trackedData(allTrackedInds(overlaps(iOverlap,2)),...
@@ -1233,10 +1279,19 @@ if nOverlaps>0
                     handles.UserData.currentFrameInd,:)=[NaN NaN];
                 
                 removedOverlapMarkers(end+1) = allTrackedInds(overlaps(iOverlap,2));
+                
             end
         end
         
     end
+     
+    %also remove these markers from the backup since they're no longer
+    %being overwritten
+    [~, removeInds, ~] = intersect(oldDataMarkerInds, removedOverlapMarkers);
+    oldData(removeInds) = [];
+    oldBoxSizes(removeInds) = [];
+    oldDataFrameInds(removeInds) = [];
+    oldDataMarkerInds(removeInds) = [];
     
 end
     
@@ -1380,6 +1435,14 @@ for iMarker=1:handles.UserData.nMarkers
         lostMarkerInds(end+1)=iMarker;
         
     end
+end
+
+% save the overwritten data to handles
+if ~isempty(oldDataMarkerInds)
+    handles.UserData.dataBackup.markerInds = oldDataMarkerInds;
+    handles.UserData.dataBackup.frameInds = oldDataFrameInds;
+    handles.UserData.dataBackup.trackedData = oldData;
+    handles.UserData.dataBackup.boxSizes = oldBoxSizes;
 end
 
 
@@ -1828,15 +1891,31 @@ elseif (ind==2)
         markersInFile=~isnan(myMarkerIndsWithData);
         myMarkerIndsWithData(isnan(myMarkerIndsWithData))=[];
         
-        %save the data from the file to the data arrays        
-        handles.UserData.trackedData(markersInFile,1:size(fileData,1),1)=...
-            fileData(:,myMarkerIndsWithData*2-1)'*handles.UserData.frameSize(1);
-        handles.UserData.trackedData(markersInFile,1:size(fileData,1),2)=...
-            fileData(:,myMarkerIndsWithData*2)'*handles.UserData.frameSize(2);
-        
-         %for box sizes, just use default box size
+        if ~isempty(myMarkerIndsWithData)
+            %first save data to be overwritten for Undo button
+            handles.UserData.dataBackup.trackedData = mat2cell(...
+                handles.UserData.trackedData(markersInFile,1:size(fileData,1),:),...
+                ones(1, length(find(markersInFile))), size(fileData,1), 2);
+            
+            handles.UserData.dataBackup.boxSizes = mat2cell(...
+                handles.UserData.trackedBoxSizes(markersInFile,1:size(fileData,1),:),...
+                ones(1, length(find(markersInFile))), size(fileData,1), 2);
+            
+            handles.UserData.dataBackup.markerInds = find(markersInFile);
+            handles.UserData.dataBackup.frameInds= repmat({1:size(fileData,1)}, ...
+                1, length(find(markersInFile)));
+            
+            %save the data from the file to the data arrays
+            handles.UserData.trackedData(markersInFile,1:size(fileData,1),1)=...
+                fileData(:,myMarkerIndsWithData*2-1)'*handles.UserData.frameSize(1);
+            handles.UserData.trackedData(markersInFile,1:size(fileData,1),2)=...
+                fileData(:,myMarkerIndsWithData*2)'*handles.UserData.frameSize(2);
+            
+            %for box sizes, just use default box size
             handles.UserData.trackedBoxSizes(markersInFile,1:size(fileData,1),:)=...
                 repmat(permute(handles.UserData.defaultMarkerSize,[1,3,2]),length(find(markersInFile)),size(fileData,1));
+            
+        end
         
     end
     
@@ -1915,6 +1994,16 @@ markerProperties.trackType=handles.UserData.markersInfo(handles.UserData.current
     handles.UserData.minConvex);
 
 % add to data array
+% first save backup of overwritten data for the Undo button
+handles.UserData.trackedDataBackup(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:) = ...
+    handles.UserData.trackedData(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:);
+handles.UserData.trackedBoxSizesBackup(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)= ...
+    handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:);
+
 handles.UserData.trackedData(...
     handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)=markerPos;
 handles.UserData.trackedBoxSizes(...
@@ -2127,6 +2216,17 @@ elseif any(round(handles.UserData.deleteRange)~=handles.UserData.deleteRange)
 end
     
 %delete the points (set them to nan)
+% first save backup for Undo button
+handles.UserData.dataBackup.trackedData = ...
+    handles.UserData.trackedData(handles.UserData.currentMarkerInds,...
+    handles.UserData.deleteRange(1):handles.UserData.deleteRange(2),:);
+handles.UserData.dataBackup.boxSizes = ...
+    handles.UserData.trackedBoxSizes(handles.UserData.currentMarkerInds,...
+    handles.UserData.deleteRange(1):handles.UserData.deleteRange(2),:);
+handles.UserData.dataBackup.markerInds = handles.UserData.currentMarkerInds;
+handles.UserData.dataBackup.frameInds = ...
+    handles.UserData.deleteRange(1):handles.UserData.deleteRange(2);
+
 handles.UserData.trackedData(handles.UserData.currentMarkerInds,...
     handles.UserData.deleteRange(1):handles.UserData.deleteRange(2),:)=NaN;
 handles.UserData.modelEstData(handles.UserData.currentMarkerInds,...
@@ -2264,6 +2364,21 @@ if ~handles.UserData.dataInitialized
 end
 
 %remove point by setting it to NaNs
+% first backup overwritten data points for Undo button
+handles.UserData.dataBackup.trackedData = mat2cell(...
+    handles.UserData.trackedData(handles.UserData.currentMarkerInds,...
+    handles.UserData.currentFrameInd,:), ...
+    ones(1, length(handles.UserData.currentMarkerInds)), 1, 2);
+
+handles.UserData.dataBackup.boxSizes = mat2cell(...
+    handles.UserData.trackedBoxSizes(handles.UserData.currentMarkerInds,...
+    handles.UserData.currentFrameInd,:), ...
+    ones(1, length(handles.UserData.currentMarkerInds)), 1, 2);
+
+handles.UserData.dataBackup.markerInds = handles.UserData.currentMarkerInds;
+handles.UserData.dataBackup.frameInds = repmat({handles.UserData.currentFrameInd}, ...
+    1, length(handles.UserData.currentMarkerInds));
+
 handles.UserData.trackedData(handles.UserData.currentMarkerInds,...
     handles.UserData.currentFrameInd,:)=NaN;
 handles.UserData.modelEstData(handles.UserData.currentMarkerInds,...
@@ -2453,6 +2568,17 @@ markerProperties.trackType=handles.UserData.markersInfo(handles.UserData.current
     handles.UserData.minConvex);
 
 % add to data array
+% first save backup of overwritten data for Undo button
+handles.UserData.trackedDataBackup(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:) = ...
+    handles.UserData.trackedData(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:);
+
+handles.UserData.trackedBoxSizesBackup(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:) = ...
+    handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:);
+
 handles.UserData.trackedData(...
     handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)=markerPos;
 handles.UserData.trackedBoxSizes(...
@@ -3373,6 +3499,16 @@ if isempty(trackedInds) || isempty(untrackedInds)
     return;
 end
 
+% save backup of overwrittendata for Undo button
+handles.UserData.trackedDataBackup(handles.UserData.currentMarkerInds(1),...
+    frameRange(untrackedInds), :) = ...
+    handles.UserData.trackedData(handles.UserData.currentMarkerInds(1),...
+    frameRange(untrackedInds), :);
+handles.UserData.trackedBoxSizesBackup(...
+    handles.UserData.currentMarkerInds(1), frameRange(untrackedInds), :) = ...
+    handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1), frameRange(untrackedInds), :);
+
 % do interpolation
 for iDim = 1 : 2
     interpData = interp1(trackedInds, trackedData(iDim,:), untrackedInds, 'spline');
@@ -3434,6 +3570,16 @@ trackedData = markerData(:,trackedInds);
 
 % the frames that we want to interpolate
 untrackedInds = find(isnan(markerData(1,:)));
+
+% save backup of overwrittendata for Undo button
+handles.UserData.trackedDataBackup(handles.UserData.currentMarkerInds(1),...
+    frameRange(untrackedInds), :) = ...
+    handles.UserData.trackedData(handles.UserData.currentMarkerInds(1),...
+    frameRange(untrackedInds), :);
+handles.UserData.trackedBoxSizesBackup(...
+    handles.UserData.currentMarkerInds(1), frameRange(untrackedInds), :) = ...
+    handles.UserData.trackedBoxSizes(...
+    handles.UserData.currentMarkerInds(1), frameRange(untrackedInds), :);
 
 % do interpolation
 for iDim = 1 : 2
@@ -3549,13 +3695,31 @@ for iMarker = 1 : handles.UserData.nMarkers
         
 end
 
+% if no points were found at all, don't need to do anything
+if all(cellfun(@isempty, foundInds))
+    handles = displayMessage(handles, 'No markers in Area', [1 0 0]);
+    return
+end
+
 % warn user
 response = questdlg(sprintf(msg), 'Delete Confirmation', 'Yes', 'No', 'No');
 
 if strcmp(response, 'Yes')
     
+    %for saving backup of deleted data for Undo button
+    newData = {};
+    newBoxSizes = {};
+    newDataMarkerInds = [];
+    newDataMarkerFrames = {};
+    
     %delete the points (set them to nan)
     for iMarker = 1 : handles.UserData.nMarkers
+        
+        %first add backup of deleted data for Undo button
+        newData{end+1} = handles.UserData.trackedData(iMarker,foundInds{iMarker},:);
+        newBoxSizes{end+1} = handles.UserData.trackedBoxSizes(iMarker,foundInds{iMarker},:);
+        newDataMarkerInds(end+1) = iMarker;
+        newDataMarkerFrames{end+1} = foundInds{iMarker};
         
         handles.UserData.trackedData(iMarker,foundInds{iMarker},:) = NaN;
         handles.UserData.modelEstData(iMarker,foundInds{iMarker},:) = NaN;
@@ -3563,6 +3727,12 @@ if strcmp(response, 'Yes')
         handles.UserData.modelEstBoxSizes(iMarker,foundInds{iMarker},:) = NaN;
         
     end
+    
+    %save to backup data to UserData
+    handles.UserData.dataBackup.trackedData = newData;
+    handles.UserData.dataBackup.boxSizes = newBoxSizes;
+    handles.UserData.dataBackup.markerInds = newDataMarkerInds;
+    handles.UserData.dataBackup.frameInds = newDataMarkerFrames;
     
 else
     
@@ -3579,4 +3749,159 @@ guidata(hObject,handles)
 
 
 
+% --- Executes on button press in DeleteAreaCurrentMarkerButton.
+function DeleteAreaCurrentMarkerButton_Callback(hObject, eventdata, handles)
+% hObject    handle to DeleteAreaCurrentMarkerButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+% data and video must be loaded in
+if ~handles.UserData.videoLoaded || ~handles.UserData.dataLoaded
+    return
+end
+
+% let user select the area for deletion
+handles = guidata(hObject);
+areaSelection = getrect(handles.FrameAxes);
+
+%with image, it sets the top and left edge to be 0.5. I want them to be 1
+%(since Matlab index by 1)
+areaSelection(1:2) = areaSelection(1:2) + 0.5; 
+
+% now if already zoomed in, then convert to rect of original frame
+if ~isnan(handles.UserData.zoomRect)
+
+    zoomRect = handles.UserData.zoomRect;
+    areaSelection(1:2) = areaSelection(1:2) + zoomRect(1:2) - 1; %-1 since index start at 1
+
+end
+
+% convert to x/y bounds rather than height/width
+areaSelection(3) = areaSelection(1) + areaSelection(3);
+areaSelection(4) = areaSelection(2) + areaSelection(4);
+
+% now go through each marker and see how many points are inside the
+% selection
+msg = 'The following number of points will be deleted: \n';
+for iMarker = 1 : length(handles.UserData.currentMarkerInds)
+    
+    markerInd = handles.UserData.currentMarkerInds(iMarker);
+    foundInds{iMarker} = find( handles.UserData.trackedData(markerInd,:,1) >= areaSelection(1) & ...
+                               handles.UserData.trackedData(markerInd,:,1) <= areaSelection(3) & ...
+                               handles.UserData.trackedData(markerInd,:,2) >= areaSelection(2) & ...
+                               handles.UserData.trackedData(markerInd,:,2) <= areaSelection(4) );
+                           
+	%if there are any points being deleted, add to msg telling the user
+	if ~isempty(foundInds{iMarker})
+        msg = [ msg handles.UserData.markersInfo(markerInd).name ' : ' ...
+            num2str(length(foundInds{iMarker})) ' points \n' ];
+    end
+        
+end
+
+% if no points were found at all, don't need to do anything
+if all(cellfun(@isempty, foundInds))
+    handles = displayMessage(handles, 'No markers in Area', [1 0 0]);
+    return
+end
+
+% warn user
+response = questdlg(sprintf(msg), 'Delete Confirmation', 'Yes', 'No', 'No');
+
+if strcmp(response, 'Yes')
+    
+    %for saving backup of deleted data for Undo button
+    newData = {};
+    newBoxSizes = {};
+    newDataMarkerInds = [];
+    newDataMarkerFrames = {};
+    
+    %delete the points (set them to nan)
+    for iMarker = 1 : length(handles.UserData.currentMarkerInds)
+        
+        markerInd = handles.UserData.currentMarkerInds(iMarker);
+        
+        %first add backup of deleted data for Undo button
+        newData{end+1} = handles.UserData.trackedData(markerInd,foundInds{iMarker},:);
+        newBoxSizes{end+1} = handles.UserData.trackedBoxSizes(markerInd,foundInds{iMarker},:);
+        newDataMarkerInds(end+1) = markerInd;
+        newDataMarkerFrames{end+1} = foundInds{iMarker};
+        
+        handles.UserData.trackedData(markerInd,foundInds{iMarker},:) = NaN;
+        handles.UserData.modelEstData(markerInd,foundInds{iMarker},:) = NaN;
+        handles.UserData.trackedBoxSizes(markerInd,foundInds{iMarker},:) = NaN;
+        handles.UserData.modelEstBoxSizes(markerInd,foundInds{iMarker},:) = NaN;
+        
+    end
+    
+    %save to backup data to UserData
+    handles.UserData.dataBackup.trackedData = newData;
+    handles.UserData.dataBackup.boxSizes = newBoxSizes;
+    handles.UserData.dataBackup.markerInds = newDataMarkerInds;
+    handles.UserData.dataBackup.frameInds = newDataMarkerFrames;
+    
+else
+    
+    return
+    
+end
+
+%redraw
+drawFrame(handles)
+handles = drawMarkersAndSegments(handles);
+
+guidata(hObject,handles)
+
+
+
+% --- Executes on button press in UndoButton.
+function UndoButton_Callback(hObject, eventdata, handles)
+% hObject    handle to UndoButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% if there's no save backup, warn user
+if isempty(handles.UserData.dataBackup.markerInds)
+    handles = displayMessage(handles, 'Nothing to Undo', [1 0 0]);
+    guidata(hObject,handles)
+    return
+end
+
+% go through each marker and overwrite 
+for iMarker = 1:length(handles.UserData.dataBackup.markerInds)
+    
+    % save current data in case they want to undo the undo
+    currentTrackedData{iMarker} = handles.UserData.trackedData(...
+        handles.UserData.dataBackup.markerInds(iMarker), ...
+        handles.UserData.dataBackup.frameInds{iMarker}, :);
+    currentTrackedBoxSizes{iMarker} = handles.UserData.trackedBoxSizes(...
+        handles.UserData.dataBackup.markerInds(iMarker), ...
+        handles.UserData.dataBackup.frameInds{iMarker}, :);
+
+
+    % now overwrite the current data with the backup
+    handles.UserData.trackedData(...
+        handles.UserData.dataBackup.markerInds(iMarker),...
+        handles.UserData.dataBackup.frameInds{iMarker}, :) = ...
+        handles.UserData.dataBackup.trackedData{iMarker};
+    
+    handles.UserData.trackedBoxSizes(...
+        handles.UserData.dataBackup.markerInds(iMarker),...
+        handles.UserData.dataBackup.frameInds{iMarker}, :) = ...
+        handles.UserData.dataBackup.boxSizes{iMarker};
+    
+end
+
+% finally overwrite the backup with the original data
+handles.UserData.dataBackup.trackedData = currentTrackedData;
+handles.UserData.dataBackup.boxSizes = currentTrackedBoxSizes;
+
+%redraw
+drawFrame(handles)
+handles = drawMarkersAndSegments(handles);
+
+guidata(hObject,handles)
+
+
+
 % 
+
