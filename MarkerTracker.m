@@ -302,7 +302,7 @@ if ~handles.UserData.dataInitialized
 end
 
 % get the clicked point
-point=floor(eventdata.IntersectionPoint(1:2)+0.5); %image sets edges=0.5, I want them to be 1
+point=eventdata.IntersectionPoint(1:2);
 if ~isnan(handles.UserData.zoomRect)
     point=point+handles.UserData.zoomRect(1:2)-1;
 end
