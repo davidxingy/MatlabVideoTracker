@@ -2068,9 +2068,9 @@ elseif (ind==2)
             
             %save the data from the file to the data arrays
             handles.UserData.trackedData(markersInFile,1:size(fileData,1),1)=...
-                fileData(:,myMarkerIndsWithData*2-1)'*handles.UserData.frameSize(1);
+                fileData(:,myMarkerIndsWithData*2-1)'*handles.UserData.frameSize(1)+0.5;
             handles.UserData.trackedData(markersInFile,1:size(fileData,1),2)=...
-                fileData(:,myMarkerIndsWithData*2)'*handles.UserData.frameSize(2);
+                fileData(:,myMarkerIndsWithData*2)'*handles.UserData.frameSize(2)+0.5;
             
             %for box sizes, just use default box size
             handles.UserData.trackedBoxSizes(markersInFile,1:size(fileData,1),:)=...
@@ -2215,9 +2215,11 @@ if ~handles.UserData.dataInitialized
 end
 
 % convert data values from pixel number to fraction of image
+% also subtract 0.5 since simi treats pixel corner as 0 where as matlab
+% treats it as 0.5
 markerData=handles.UserData.trackedData;
-markerData(:,:,1)=markerData(:,:,1)/handles.UserData.frameSize(1);
-markerData(:,:,2)=markerData(:,:,2)/handles.UserData.frameSize(2);
+markerData(:,:,1)=(markerData(:,:,1)-0.5)/handles.UserData.frameSize(1);
+markerData(:,:,2)=(markerData(:,:,2)-0.5)/handles.UserData.frameSize(2);
 markerData=permute(markerData,[2 1 3]);
 
 % get names
