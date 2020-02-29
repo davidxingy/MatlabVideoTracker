@@ -91,7 +91,7 @@ function MarkerTracker_OpeningFcn(hObject, eventdata, handles, varargin)
 handles.output = hObject;
 
 % GUI general settings
-handles.UserData.VersionNumber = '2.0';
+handles.UserData.VersionNumber = '3.0';
 
 handles.UserData.bufferSize = 30;
 handles.UserData.autosaveIntervalMin = 3;
@@ -173,6 +173,12 @@ handles.UserData.dataBackup.trackedData = {};
 handles.UserData.dataBackup.boxSizes = {};
 handles.UserData.dataBackup.frameInds = {};
 handles.UserData.dataBackup.markerInds = [];
+handles.UserData.image_h = [];
+handles.UserData.currentMarkers_h = [];
+handles.UserData.estimatedMarkers_h = [];
+handles.UserData.selection_h = [];
+handles.UserData.markerBoxImage_h = [];
+handles.UserData.markerBoxCenter_h = [];
 timeInfo=clock;
 handles.UserData.lastSavedTime=timeInfo(4)*60+timeInfo(5);
 
@@ -258,7 +264,7 @@ if strcmp(callbackdata.Key,'rightarrow')
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE IT WILL CONTINUE READING
     %KEY STROKES AND QUEUING THEM EVEN THOUGH I SET BUSYACTION TO CANCEL
     %RATHER THAN QUEUE
-    pause(0.02)
+    pause(0.04)
     
 elseif strcmp(callbackdata.Key,'leftarrow')
     %previous frame (if not beginning of video)
@@ -360,7 +366,7 @@ handles.UserData.trackedBoxSizes(...
     handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)=boxSize;
 
 % redraw
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(handles.figure1,handles)
@@ -651,7 +657,7 @@ handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
 
 % show frame (or zoomed in frame)
 if displayNewFrame
-    drawFrame(handles)
+    handles = drawFrame(handles);
     handles=drawMarkersAndSegments(handles);
 end
 
@@ -666,32 +672,67 @@ handles=drawEpochBar(handles);
 
 
 
-function drawFrame(handles)
-figure(handles.figure1)
-axes(handles.FrameAxes);
+function handles = drawFrame(handles, varargin)
 
-% get zoom box and display
-if isnan(handles.UserData.zoomRect)
-    frame_h=image(handles.UserData.currentFrame);
+narginchk(1,2);
+if nargin==2
+    callImshow = varargin{1};
 else
-    zoomRect=handles.UserData.zoomRect;
-    frame_h=imshow(handles.UserData.currentFrame(zoomRect(2):zoomRect(2)+zoomRect(4)-1,...
-        zoomRect(1):zoomRect(1)+zoomRect(3)-1,:));
+    callImshow = false;
 end
 
-% set callback for new axes
-frame_h.ButtonDownFcn=@FrameButtonDown_Callback;
-axis off
+% for the first time showing the frame, use imshow, unless we're directed
+% otherwise (e.g. zoom functions need to call imshow again)
+if isempty(handles.UserData.image_h) || callImshow
+    
+    figure(handles.figure1)
+    axes(handles.FrameAxes);
+
+    % get zoom box and then display
+    if isnan(handles.UserData.zoomRect)
+        handles.UserData.image_h = imshow(handles.UserData.currentFrame);
+    else
+        zoomRect=handles.UserData.zoomRect;
+        handles.UserData.image_h = imshow(handles.UserData.currentFrame(zoomRect(2):zoomRect(2)+zoomRect(4)-1,...
+            zoomRect(1):zoomRect(1)+zoomRect(3)-1,:));
+    end
+    % set callback for new axes
+    handles.UserData.image_h.ButtonDownFcn=@FrameButtonDown_Callback;
+    axis off
+
+else
+
+    % if not first time showing frame, just updated the CData of the image
+    % rather than calling imshow again which is slow.
+    % get zoom box and then update display
+    if isnan(handles.UserData.zoomRect)
+        handles.UserData.image_h.CData = handles.UserData.currentFrame;
+    else
+        zoomRect=handles.UserData.zoomRect;
+        handles.UserData.image_h.CData = handles.UserData.currentFrame(zoomRect(2):zoomRect(2)+zoomRect(4)-1,...
+            zoomRect(1):zoomRect(1)+zoomRect(3)-1,:);
+        handles.UserData.image_h.XData = [1 size(handles.UserData.image_h.CData,2)];
+        handles.UserData.image_h.YData = [1 size(handles.UserData.image_h.CData,1)];
+    end
+
+end
 
 
-function handles=drawMarkersAndSegments(handles)
+function handles=drawMarkersAndSegments(handles, varargin)
 % function to draw the markers and stick figure
+
+narginchk(1,2);
+if nargin==2
+    callPlotFunctions = varargin{1};
+else
+    callPlotFunctions = false;
+end
 
 if ~handles.UserData.dataInitialized
     return
 end
 
-% draw current marker
+% get marker data
 markersPos=squeeze(handles.UserData.trackedData(:,handles.UserData.currentFrameInd,:));
 markerBoxSize=round(squeeze(handles.UserData.trackedBoxSizes(...
         handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:))/2);
@@ -708,102 +749,183 @@ else
     markersPosEstZoom=markersPosEst;
 end
 
-% draw marker if it's tracked
-markerExists=true;
-if ~isnan(markersPos(handles.UserData.currentMarkerInds(1),1))
-    markerType='o';
-    markerColor=handles.UserData.plotMarkerColor;
-    markerSize=handles.UserData.plotMarkerSize;
-    currentMarkerPosZoom=markersPosZoom(handles.UserData.currentMarkerInds(1),:);
+% draw current marker selection cursor if it's tracked or if there's an
+% estimate for it from the kinematic model
+if ~isnan(markersPos(handles.UserData.currentMarkerInds(1),1)) 
+        
+    %selection cursor is the tracked location
+    currentMarkersXData = markersPosZoom(handles.UserData.currentMarkerInds(1),1);
+    currentMarkersYData = markersPosZoom(handles.UserData.currentMarkerInds(1),2);
+    currentMarkersPos = markersPos(handles.UserData.currentMarkerInds(1),:);
+    markerExists = true;
+
 elseif ~isnan(markersPosEst(handles.UserData.currentMarkerInds(1),1))
-    %or if there's an estimate for it from the kinematic model
-    markerType='x';
-    markerColor=handles.UserData.plotMarkerEstColor;
-    markerSize=handles.UserData.plotMarkerEstSize;
-    currentMarkerPosZoom=markersPosEstZoom(handles.UserData.currentMarkerInds(1),:);
+    
+    %selection cursor is the estimated location
+    currentMarkersXData = markersPosEstZoom(handles.UserData.currentMarkerInds(1),1);
+    currentMarkersYData = markersPosEstZoom(handles.UserData.currentMarkerInds(1),2);
+    currentMarkersPos = markersPosEst(handles.UserData.currentMarkerInds(1),:);
+    markerExists = true;
+    
 else
-    markerExists=false;
+    
+    %no marker data, don't show selection cursor
+    currentMarkersXData = nan;
+    currentMarkersYData = nan;
+    markerExists = false;
+    
 end
 
-% plot on frame
+% plot makers on frame
+% get the pixel data for all tracked markers
+allMarkersXData = markersPosZoom(:,1);
+allMarkersYData = markersPosZoom(:,2);
+
+% and for all estimated markers
+estMarkersXData = markersPosEstZoom(:,1);
+estMarkersYData = markersPosEstZoom(:,2);
+
+% now for the marker box
 if markerExists
+    
+    startY = max(1, floor(currentMarkersPos(2)-markerBoxSize(2)));
+    offsetY = max(1, currentMarkersPos(2)-markerBoxSize(2)) - startY;
+    endY = min(ceil(currentMarkersPos(2)+markerBoxSize(2)), ...
+        handles.UserData.frameSize(2));
+    
+    startX = max(1,floor(currentMarkersPos(1)-markerBoxSize(1)));
+    offsetX = max(1, currentMarkersPos(1)-markerBoxSize(1)) - startX;
+    endX = min(ceil(currentMarkersPos(1)+markerBoxSize(1)),...
+        handles.UserData.frameSize(1));
+    
+    markerBoxImage = handles.UserData.currentFrame(startY:endY,startX:endX,:);
+    markerBoxXLim = [offsetX+0.5 endX-startX+offsetX];
+    markerBoxYLim = [offsetY+0.5 endY-startY+offsetY];
+    markerBoxCenterX = markerBoxSize(1)+1+offsetX;
+    markerBoxCenterY = markerBoxSize(2)+1+offsetY;
+    
+else
+   
+    markerBoxImage = 0;
+    markerBoxXLim = [0 1];
+    markerBoxYLim = [0 1];
+    markerBoxCenterX = nan;
+    markerBoxCenterY = nan;
+    
+end
+    
+% do the actual plotting
+if isempty(handles.UserData.currentMarkers_h) || callPlotFunctions
+    
+    % we haven't done the first plot yet, so use plot/image ect which is
+    % slow and save the handles
+    
     axes(handles.FrameAxes)
     hold on
-    plot(currentMarkerPosZoom(1),...
-        currentMarkerPosZoom(2),...
-        markerType,'MarkerSize',markerSize,...
+    
+    %plot the tracked points
+    handles.UserData.currentMarkers_h = plot(allMarkersXData, ...
+        allMarkersYData, 'o', ...
+        'MarkerSize',handles.UserData.plotMarkerSize,...
         'MarkerEdgeColor','k',...
-        'MarkerFaceColor',markerColor,...
+        'MarkerFaceColor',handles.UserData.plotMarkerColor,...
         'PickableParts','none');
     
+    %plot the estimated points
+    handles.UserData.estimatedMarkers_h = plot(estMarkersXData, ...
+        estMarkersYData, 'x', ...
+        'MarkerSize',handles.UserData.plotMarkerEstSize,...
+        'MarkerEdgeColor','k',...
+        'MarkerFaceColor',handles.UserData.plotMarkerEstColor,...
+        'PickableParts','none');
+
     %put current marker selection cursor
-    plot(currentMarkerPosZoom(1),...
-        currentMarkerPosZoom(2),...
-        'o','MarkerSize',handles.UserData.plotCurrentMarkerSize,...
+    handles.UserData.selection_h = plot(currentMarkersXData, ...
+        currentMarkersYData, 'o', ...
+        'MarkerSize',handles.UserData.plotCurrentMarkerSize,...
         'Color',handles.UserData.plotCurrentMarkerColor,...
         'PickableParts','none');
     hold off
-end
-
-%show marker box
-if ~isnan(markersPos(handles.UserData.currentMarkerInds(1),1))
+    
+    %show marker box        
     axes(handles.MarkerAxes);
+    handles.UserData.markerBoxImage_h = image(markerBoxImage);
+    xlim(markerBoxXLim)
+    ylim(markerBoxYLim)
     
-    startY = max(1, floor(markersPos(handles.UserData.currentMarkerInds(1),2)-markerBoxSize(2)));
-    offsetY = max(1, markersPos(handles.UserData.currentMarkerInds(1),2)-markerBoxSize(2)) - startY;
-    endY = min(ceil(markersPos(handles.UserData.currentMarkerInds(1),2)+markerBoxSize(2)), ...
-        handles.UserData.frameSize(2));
-    
-    startX = max(1,floor(markersPos(handles.UserData.currentMarkerInds(1),1)-markerBoxSize(1)));
-    offsetX = max(1, markersPos(handles.UserData.currentMarkerInds(1),1)-markerBoxSize(1)) - startX;
-    endX = min(ceil(markersPos(handles.UserData.currentMarkerInds(1),1)+markerBoxSize(1)),...
-        handles.UserData.frameSize(1));
-    
-    image(handles.UserData.currentFrame(startY:endY,startX:endX,:));
-    xlim([offsetX+0.5 endX-startX+offsetX])
-    ylim([offsetY+0.5 endY-startY+offsetY])
-
     hold on
-    plot(markerBoxSize(1)+1+offsetX,markerBoxSize(2)+1+offsetY,'+w');
-    hold off    
+    handles.UserData.markerBoxCenter_h = plot(markerBoxCenterX,markerBoxCenterY,'+w');
+    hold off
     axis off
+
 else
-    axes(handles.MarkerAxes);
-    image(0);
-    axis off
+    
+    %plotting has been done in the past, just updated the data on the
+    %handles rather then calling plot/image again which is slow
+    handles.UserData.currentMarkers_h.XData = allMarkersXData;
+    handles.UserData.currentMarkers_h.YData = allMarkersYData;
+    
+    handles.UserData.estimatedMarkers_h.XData = estMarkersXData;
+    handles.UserData.estimatedMarkers_h.YData = estMarkersYData;
+    
+    handles.UserData.selection_h.XData = currentMarkersXData;
+    handles.UserData.selection_h.YData = currentMarkersYData;
+
+    %marker box
+    handles.MarkerAxes.XLim = markerBoxXLim;
+    handles.MarkerAxes.YLim = markerBoxYLim;
+    handles.UserData.markerBoxImage_h.CData = markerBoxImage;
+    
+    handles.UserData.markerBoxCenter_h.XData = markerBoxCenterX;
+    handles.UserData.markerBoxCenter_h.YData = markerBoxCenterY;
+    
 end
 
-% now draw other markers and segments if desired
+% now draw line segments if desired
 if handles.UserData.drawStickFigure
-    axes(handles.FrameAxes)
-    hold on
-    %tracked markers
-    plot(markersPosZoom(:,1),markersPosZoom(:,2),'o','MarkerSize',handles.UserData.plotMarkerSize,...
-        'MarkerEdgeColor','k','MarkerFaceColor',handles.UserData.plotMarkerColor,'PickableParts','none');
     
-    %model estimated markers
-    plot(markersPosEstZoom(isnan(markersPosZoom(:,1)),1),markersPosEstZoom(isnan(markersPosZoom(:,1)),2),...
-        'x','MarkerSize',handles.UserData.plotMarkerSize,...
-        'Color',handles.UserData.plotMarkerEstColor,'PickableParts','none');
-    
-    %draw line segments
     if ~isempty(handles.UserData.segments)
+        
         markersPosZoom(isnan(markersPosZoom(:,1)),:)=markersPosEstZoom(isnan(markersPosZoom(:,1)),:);
         segmentXs=[markersPosZoom(handles.UserData.segments(:,1),1)'; markersPosZoom(handles.UserData.segments(:,2),1)'];
         segmentYs=[markersPosZoom(handles.UserData.segments(:,1),2)'; markersPosZoom(handles.UserData.segments(:,2),2)'];
         
-        handles.UserData.stick_h=line(segmentXs,segmentYs,'linewidth',handles.UserData.plotSegmentWidth,...
-            'color',handles.UserData.plotSegmentColor,'PickableParts','none');
+        if isempty(handles.UserData.stick_h) || callPlotFunctions
+            %stick plot handle hasn't been defined yet, use line()
+            
+            axes(handles.FrameAxes)
+            hold on
+            
+            %draw line segments
+            handles.UserData.stick_h=line(segmentXs,segmentYs,'linewidth',handles.UserData.plotSegmentWidth,...
+                'color',handles.UserData.plotSegmentColor,'PickableParts','none');
+            
+            hold off;
+            
+        else
+            %have already used line(), just updated it's data instead of
+            %re-calling line() which is slow
+            
+            for iLine=1:length(handles.UserData.stick_h)
+                handles.UserData.stick_h(iLine).Visible = 'on';
+                handles.UserData.stick_h(iLine).XData = segmentXs(:, iLine);
+                handles.UserData.stick_h(iLine).YData = segmentYs(:, iLine);
+            end
+            
+        end
+        
     end
-    
-    hold off;
 
 else
-    if ishandle(handles.UserData.stick_h)
+    
+    %don't want to show lines, make them invisible (if lines have been
+    %drawn)
+    if ~isempty(handles.UserData.stick_h)
         for iLine=1:length(handles.UserData.stick_h)
-            delete(handles.UserData.stick_h(iLine));
+            handles.UserData.stick_h(iLine).Visible = 'off';
         end
     end
+    
 end
 
 
@@ -897,8 +1019,8 @@ handles.SearchRadiusInput.String=...
 
 % draw marker cursor and marker box
 if handles.UserData.dataInitialized
-    drawFrame(handles);
-    handles=drawMarkersAndSegments(handles);
+    handles = drawFrame(handles);
+    handles = drawMarkersAndSegments(handles);
 end
 
 
@@ -1767,7 +1889,7 @@ function LoadVidButton_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
-% Oepn dialog to select video file
+% Open dialog to select video file
 [file,path] = uigetfile({'*.avi';'*.mp4'});
 
 if file==0
@@ -2169,7 +2291,7 @@ handles.UserData.trackedBoxSizes(...
     handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)=boxSize;
 
 % redraw
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -2196,7 +2318,7 @@ handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
     handles.UserData.globalContrast, handles.UserData.globalDecorr, handles.UserData.exclusionMask);
 
 % redraw frame
-drawFrame(handles)
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles);
@@ -2403,7 +2525,7 @@ handles.UserData.modelEstBoxSizes(handles.UserData.currentMarkerInds,...
     handles.UserData.deleteRange(1):handles.UserData.deleteRange(2),:)=NaN;
 
 %redraw
-drawFrame(handles)
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -2502,7 +2624,7 @@ while getappdata(handles.figure1,'autorunEnabled')
 end
 
 % draw frame an stick figure
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 setappdata(handles.figure1,'autorunEnabled',false);
@@ -2555,7 +2677,7 @@ handles.UserData.modelEstBoxSizes(handles.UserData.currentMarkerInds,...
     handles.UserData.currentFrameInd,:)=NaN;
 
 %redraw frame
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -2750,7 +2872,7 @@ handles.UserData.modelEstBoxSizes(...
     handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:)=selection(3:4);
 
 % redraw
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -2864,8 +2986,8 @@ end
 handles.UserData.zoomRect=zoomRect;
 
 % redraw frame
-drawFrame(handles);
-handles=drawMarkersAndSegments(handles);
+handles = drawFrame(handles, true);
+handles=drawMarkersAndSegments(handles, true);
 
 guidata(hObject,handles);
 
@@ -2878,8 +3000,8 @@ function ZoomOrigButton_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 handles.UserData.zoomRect=NaN;
 
-drawFrame(handles);
-handles=drawMarkersAndSegments(handles);
+handles = drawFrame(handles, true);
+handles=drawMarkersAndSegments(handles, true);
 
 guidata(hObject,handles)
 
@@ -3465,7 +3587,7 @@ handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
     handles.UserData.globalContrast, handles.UserData.globalDecorr,handles.UserData.exclusionMask);
 
 % redraw
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -3535,7 +3657,7 @@ handles.UserData.currentFrame=TrackerFunctions.applyImageProcessing(...
     handles.UserData.globalContrast, handles.UserData.globalDecorr,handles.UserData.exclusionMask);
 
 % redraw
-drawFrame(handles);
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 
@@ -3635,7 +3757,7 @@ if ~success
 end
 
 %redraw
-drawFrame(handles)
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -3661,7 +3783,7 @@ if ~success
 end
 
 %redraw
-drawFrame(handles)
+handles = drawFrame(handles);
 handles=drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -3731,7 +3853,7 @@ if ~pointsDeleted
 end
 
 %redraw
-drawFrame(handles)
+handles = drawFrame(handles);
 handles = drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -3759,7 +3881,7 @@ if ~pointsDeleted
 end
 
 %redraw
-drawFrame(handles)
+handles = drawFrame(handles);
 handles = drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
@@ -3809,7 +3931,7 @@ handles.UserData.dataBackup.trackedData = currentTrackedData;
 handles.UserData.dataBackup.boxSizes = currentTrackedBoxSizes;
 
 %redraw
-drawFrame(handles)
+handles = drawFrame(handles);
 handles = drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
