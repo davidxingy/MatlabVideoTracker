@@ -180,6 +180,7 @@ handles.UserData.estimatedMarkers_h = [];
 handles.UserData.selection_h = [];
 handles.UserData.markerBoxImage_h = [];
 handles.UserData.markerBoxCenter_h = [];
+handles.UserData.currentEpochBox_h = [];
 timeInfo=clock;
 handles.UserData.lastSavedTime=timeInfo(4)*60+timeInfo(5);
 
@@ -2037,6 +2038,19 @@ if (ind==1)
         % TODO: Checks+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         handles.UserData=vars.MARKERTRACKERGUI_UserData;
         
+        %set all the drawing handles (plots, image, patches, ect) to empty
+        %since those have been deleted, and will force a redraw of those
+        %handles
+        handles.UserData.stick_h=[];
+        handles.UserData.epochPositionLine_h=[];
+        handles.UserData.image_h = [];
+        handles.UserData.currentMarkers_h = [];
+        handles.UserData.estimatedMarkers_h = [];
+        handles.UserData.selection_h = [];
+        handles.UserData.markerBoxImage_h = [];
+        handles.UserData.markerBoxCenter_h = [];
+        handles.UserData.currentEpochBox_h = [];
+        
         %update gui with video info
         handles=updateVidDisplayInfo(handles);
         
@@ -2045,6 +2059,7 @@ if (ind==1)
         handles.UserData.currentFrameInd=nan; %so no previous frame checks
         handles=changeFrame(handles,loadedFrameInd,true);
         handles=changeSelectedMarkers(handles,handles.UserData.currentMarkerInds);
+        handles=drawEpochBar(handles, true);
         
         %if for kin models, if defined and/or trained, set background of
         %the buttons to green
