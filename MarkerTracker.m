@@ -165,6 +165,7 @@ handles.UserData.kinModel.externFileNames={};
 handles.UserData.kinModel.externData={};
 handles.UserData.kinModel.externMarkerNames={};
 handles.UserData.epochs=[];
+handles.UserData.currentEpoch = [];
 handles.UserData.exclusionZones={};
 handles.UserData.exclusionMask=[];
 handles.UserData.kinModelDefined=false;
@@ -260,11 +261,10 @@ if strcmp(callbackdata.Key,'rightarrow')
     end
     
     handles=drawMarkersAndSegments(handles);
-    
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE IT WILL CONTINUE READING
     %KEY STROKES AND QUEUING THEM EVEN THOUGH I SET BUSYACTION TO CANCEL
     %RATHER THAN QUEUE
-    pause(0.04)
+%     pause(0.04)
     
 elseif strcmp(callbackdata.Key,'leftarrow')
     %previous frame (if not beginning of video)
@@ -668,8 +668,7 @@ handles.FrameSlider.Value=handles.UserData.currentFrameInd;
 handles.FrameNumberBox.String=num2str(frameNumber);
 
 % update epoch bar
-handles=drawEpochBar(handles);
-
+handles=drawEpochBar(handles, false);
 
 
 function handles = drawFrame(handles, varargin)
@@ -930,65 +929,131 @@ end
 
 
 
-function handles=drawEpochBar(handles)
+function handles=drawEpochBar(handles, updateEpochs)
 % function to update the epoch bar with the location of the defined epochs,
 % and also draw a line to indicate the current frame position
 if ~handles.UserData.videoLoaded
     return
 end
 
-axes(handles.EpochAxes)
-xlim([1 handles.UserData.nFrames])
-ylim([0 1])
-% axis off
-
-% remove old rectangles
-htoDelete=[];
-for iHandle=1:length(handles.EpochAxes.Children)
-    if strcmpi(class(handles.EpochAxes.Children(iHandle)),...
-            'matlab.graphics.primitive.Patch')
-        htoDelete=[htoDelete iHandle];
-    end
-end
-delete(handles.EpochAxes.Children(htoDelete));
-
-% draw rectangles for each epoch
-color1=true;
-currentEpoch=[];
-for iEpoch=1:size(handles.UserData.epochs,1)
+% if we want to update epochs (i.e. epochs have changed)
+if updateEpochs
     
-    epochStart=handles.UserData.epochs(iEpoch,1);
-    epochEnd=handles.UserData.epochs(iEpoch,2);
-    
-    if handles.UserData.currentFrameInd>=epochStart && handles.UserData.currentFrameInd<=epochEnd
-        patchEdgeColor='k';
-        patchEdgeWidth=1.5;
-        currentEpoch=iEpoch;
-    else
-        patchEdgeColor=handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1);
-        patchEdgeWidth=0.1;
+    % remove old rectangles
+    htoDelete=[];
+    for iHandle=1:length(handles.EpochAxes.Children)
+        if strcmpi(class(handles.EpochAxes.Children(iHandle)),...
+                'matlab.graphics.primitive.Patch')
+            htoDelete=[htoDelete iHandle];
+        end
     end
+    delete(handles.EpochAxes.Children(htoDelete));
+    
+    % draw rectangles for each epoch
+    color1=true;
+    currentEpoch=[];
+    for iEpoch=1:size(handles.UserData.epochs,1)
         
-    patch([epochStart epochStart epochEnd epochEnd],[1 0 0 1],...
-        handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1),...
-        'EdgeColor',patchEdgeColor,'LineWidth',patchEdgeWidth,'HitTest','off');
+        epochStart=handles.UserData.epochs(iEpoch,1);
+        epochEnd=handles.UserData.epochs(iEpoch,2);
+        
+        if handles.UserData.currentFrameInd>=epochStart && handles.UserData.currentFrameInd<=epochEnd
+            patchEdgeColor='k';
+            patchEdgeWidth=1.5;
+            currentEpoch=iEpoch;
+        else
+            patchEdgeColor=handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1);
+            patchEdgeWidth=0.1;
+        end
+        
+        patch_h = patch([epochStart epochStart epochEnd epochEnd],[1 0 0 1],...
+            handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1),...
+            'EdgeColor',patchEdgeColor,'LineWidth',patchEdgeWidth,'HitTest','off');
+        
+        color1=~color1;
+    end
     
-    color1=~color1;
+    if ~isempty(currentEpoch)
+        uistack(handles.EpochAxes.Children(currentEpoch),'top'); %bring current epoch patch to top
+    end
+    
+end
+
+% draw/move current epoch indicator box
+if ~isempty(handles.UserData.epochs)
+    
+    newCurrentEpoch = find( handles.UserData.currentFrameInd >= handles.UserData.epochs(:,1) & ...
+        handles.UserData.currentFrameInd <= handles.UserData.epochs(:,2) );
+    
+    if (~isempty(newCurrentEpoch) && isempty(handles.UserData.currentEpoch)) || ...
+            any(newCurrentEpoch ~= handles.UserData.currentEpoch)
+        
+        %in this case, the current epoch has changed (either to a new epoch
+        %from no epoch, or to a new epoch from a different epoch)
+        
+        %we'll need to change the current epoch indicator box
+        currentEpochBoxStart = handles.UserData.epochs(newCurrentEpoch,1);
+        currentEpochBoxEnd = handles.UserData.epochs(newCurrentEpoch,2);
+        showBox = true;
+        redrawBox = true;
+        handles.UserData.currentEpoch = newCurrentEpoch;
+        
+    elseif isempty(newCurrentEpoch) && ~isempty(handles.UserData.currentEpoch)
+        
+        %in this case, the frame isn't in any epoch now whereas it was in an
+        %epoch before
+        
+        %we'll need to remove the current epoch indicator box
+        currentEpochBoxStart = 1; %can be whatever since we're not making it visible
+        currentEpochBoxEnd = 1;
+        showBox = false;
+        redrawBox = true;
+        handles.UserData.currentEpoch = newCurrentEpoch;
+        
+    else
+        
+        %no change (either in same epoch as before, or not in any epoch new or
+        %before
+        redrawBox = false;
+        
+    end
+    
+    % update the box (or make the box if it hasn't been made yet)
+    if redrawBox
+        
+        if ~isfield(handles.UserData,'currentEpochBox_h') || isempty(handles.UserData.currentEpochBox_h)
+            
+            handles.UserData.currentEpochBox_h = patch(...
+                [currentEpochBoxStart currentEpochBoxStart currentEpochBoxEnd currentEpochBoxEnd],...
+                [0 1 1 0],'k', 'FaceAlpha',0, 'LineWidth',1.5, 'Visible',showBox);
+            
+        else
+            
+            handles.UserData.currentEpochBox_h.XData = ...
+                [currentEpochBoxStart currentEpochBoxStart currentEpochBoxEnd currentEpochBoxEnd];
+            handles.UserData.currentEpochBox_h.XData = ...
+                [currentEpochBoxStart currentEpochBoxStart currentEpochBoxEnd currentEpochBoxEnd];
+            handles.UserData.currentEpochBox_h.Visible = showBox;
+            
+        end
+        
+    end
+
 end
 
 % draw/move current frame indicator line
 if isempty(handles.UserData.epochPositionLine_h) || isempty(handles.UserData.epochPositionLine_h.Parent)
+    
+    axes(handles.EpochAxes)
     hold on
     handles.UserData.epochPositionLine_h=line(repmat(handles.UserData.currentFrameInd,1,2),...
         [0 1],'color','r');
     hold off
+    
 else
     handles.UserData.epochPositionLine_h.XData=repmat(handles.UserData.currentFrameInd,1,2);
 end
 
-if ~isempty(currentEpoch)
-    uistack(handles.EpochAxes.Children(currentEpoch),'top'); %bring current epoch patch to top
-end
 uistack(handles.UserData.epochPositionLine_h,'top') %bring line to top
 
 
@@ -1933,6 +1998,10 @@ if handles.UserData.dataLoaded && ~handles.UserData.dataInitialized
     handles.UserData.modelEstBoxSizes=NaN(handles.UserData.nMarkers,handles.UserData.nFrames,2);
     handles.UserData.dataInitialized=true;
 end
+
+% set epochs bar xlims
+set(handles.EpochAxes,'xlim',[1 handles.UserData.nFrames]);
+set(handles.EpochAxes,'ylim',[0 1]);
 
 guidata(hObject, handles);
 
@@ -3096,7 +3165,7 @@ end
 handles.UserData.epochs=sortrows(handles.UserData.epochs);
 
 %replot epoch bar
-handles=drawEpochBar(handles);
+handles=drawEpochBar(handles, true);
 
 guidata(hObject,handles)
 
@@ -3151,7 +3220,7 @@ end
 handles.UserData.epochs=sortrows(handles.UserData.epochs);
 
 %replot epoch bar
-handles=drawEpochBar(handles);
+handles=drawEpochBar(handles, true);
 
 guidata(hObject,handles)
 
@@ -3183,7 +3252,7 @@ end
 handles.UserData.epochs(currentEpoch,:)=[];
 
 %replot epoch bar
-handles=drawEpochBar(handles);
+handles=drawEpochBar(handles, true);
 
 guidata(hObject,handles)
 
@@ -3732,7 +3801,7 @@ end
 handles.UserData.epochs=sortrows(round(epochs));
 
 %replot epoch bar
-handles=drawEpochBar(handles);
+handles=drawEpochBar(handles, true);
 
 guidata(hObject,handles)
 
