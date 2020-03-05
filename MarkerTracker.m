@@ -940,6 +940,8 @@ end
 % if we want to update epochs (i.e. epochs have changed)
 if updateEpochs
     
+    axes(handles.EpochAxes)
+    
     % remove old rectangles
     htoDelete=[];
     for iHandle=1:length(handles.EpochAxes.Children)
@@ -1970,7 +1972,7 @@ catch
     warndlg('Unable to load video!')
     return;
 end
-handles.UserData.nFrames=handles.UserData.videoReader.Duration*handles.UserData.videoReader.FrameRate;
+handles.UserData.nFrames=round(handles.UserData.videoReader.Duration*handles.UserData.videoReader.FrameRate);
 handles.UserData.frameRate=handles.UserData.videoReader.frameRate;
 handles.UserData.frameSize=[handles.UserData.videoReader.Width handles.UserData.videoReader.Height];
 
