@@ -961,13 +961,10 @@ if updateEpochs
         epochEnd=handles.UserData.epochs(iEpoch,2);
         
         if handles.UserData.currentFrameInd>=epochStart && handles.UserData.currentFrameInd<=epochEnd
-            patchEdgeColor='k';
-            patchEdgeWidth=1.5;
             currentEpoch=iEpoch;
-        else
-            patchEdgeColor=handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1);
-            patchEdgeWidth=0.1;
         end
+        patchEdgeColor=handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1);
+        patchEdgeWidth=0.1;
         
         patch_h = patch([epochStart epochStart epochEnd epochEnd],[1 0 0 1],...
             handles.UserData.epochPatchColor1*color1+handles.UserData.epochPatchColor2*(~color1),...
@@ -1024,7 +1021,8 @@ if ~isempty(handles.UserData.epochs)
     % update the box (or make the box if it hasn't been made yet)
     if redrawBox
         
-        if ~isfield(handles.UserData,'currentEpochBox_h') || isempty(handles.UserData.currentEpochBox_h)
+        if ~isfield(handles.UserData,'currentEpochBox_h') || isempty(handles.UserData.currentEpochBox_h) || ...
+                ~isvalid(handles.UserData.currentEpochBox_h)
             
             handles.UserData.currentEpochBox_h = patch(...
                 [currentEpochBoxStart currentEpochBoxStart currentEpochBoxEnd currentEpochBoxEnd],...
@@ -1579,7 +1577,7 @@ if ~isempty(markerEstInds) && handles.UserData.kinModelTrained
         allTrackedNames,markerEstNames,{handles.UserData.markersInfo(markerEstInds).kinModelAnchors},...
         [handles.UserData.kinModel.anchorNames1; handles.UserData.kinModel.anchorNames2]);
     
-    if ~isempty(inputInds) && ~any(isnan(outputInds))
+    if ~isempty(inputInds) && ~any(any(isnan(outputInds)))
         %if no inputs available for the kNN, don't bother using the model
         
         %use the input inds to get the data needed for the input of the kNN
