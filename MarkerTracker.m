@@ -22,7 +22,7 @@ function varargout = MarkerTracker(varargin)
 
 % Edit the above text to modify the response to help MarkerTracker
 
-% Last Modified by GUIDE v2.5 07-Feb-2020 18:12:45
+% Last Modified by GUIDE v2.5 06-Mar-2020 00:01:42
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -91,7 +91,7 @@ function MarkerTracker_OpeningFcn(hObject, eventdata, handles, varargin)
 handles.output = hObject;
 
 % GUI general settings
-handles.UserData.VersionNumber = '3.0';
+handles.UserData.VersionNumber = '4.0';
 
 handles.UserData.bufferSize = 30;
 handles.UserData.autosaveIntervalMin = 3;
@@ -147,6 +147,7 @@ handles.UserData.dataInitialized=false;
 handles.UserData.deleteRange=[str2double(handles.DeleteStartInput.String),...
     str2double(handles.DeleteEndInput.String)];
 handles.UserData.drawStickFigure=handles.ShowStickFigureCheckBox.Value;
+handles.UserData.showMarkerEsts=handles.ShowEstimatesCheckBox.Value;
 handles.UserData.stick_h=[];
 handles.UserData.epochPositionLine_h=[];
 handles.UserData.globalContrast=0;
@@ -174,6 +175,7 @@ handles.UserData.dataBackup.trackedData = {};
 handles.UserData.dataBackup.boxSizes = {};
 handles.UserData.dataBackup.frameInds = {};
 handles.UserData.dataBackup.markerInds = [];
+handles.UserData.frameJumpAmount = 10;
 handles.UserData.image_h = [];
 handles.UserData.currentMarkers_h = [];
 handles.UserData.estimatedMarkers_h = [];
@@ -201,6 +203,32 @@ guidata(hObject, handles);
 
 % UIWAIT makes MarkerTracker wait for user response (see UIRESUME)
 % uiwait(handles.figure1);
+
+
+function marker = setMarkerDefaults(markerName, markerInd, handles)
+% default parameters for markers
+
+marker.name = markerName;
+marker.UIListInd = markerInd;
+marker.trackType = 'manual';
+marker.usePredModel = false;
+marker.useKinModel = false;
+marker.freezeSeg = false;
+marker.freezeSegAnchor = [];
+marker.searchRadius = 10;
+marker.guessSize = handles.UserData.defaultMarkerSize;
+marker.modelParams = [];
+
+marker.searchProperties.useChannels = zeros(handles.UserData.nColorChannels,1);
+marker.searchProperties.thresholds = [zeros(handles.UserData.nColorChannels,1),...
+    ones(handles.UserData.nColorChannels,1)*255];
+marker.searchProperties.useContrastEnhancement = zeros(handles.UserData.nColorChannels,1);
+marker.searchProperties.blobSizes = [];
+marker.searchProperties.maxAspectRatio = 5;
+marker.searchProperties.minArea = 0;
+
+marker.kinModelAnchors = {};
+marker.kinModelAngleTol = handles.UserData.kinModel.defaultAngleTol;
 
 
 
@@ -261,6 +289,12 @@ if strcmp(callbackdata.Key,'rightarrow')
         handles=autoIncrementMarkers(handles);
     end
     
+    %if the selected marker is set to freeze, set the est position for that
+    %marker
+    if handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).freezeSeg
+        handles = setFreezePos(handles, 1);
+    end
+    
     handles=drawMarkersAndSegments(handles);
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE IT WILL CONTINUE READING
     %KEY STROKES AND QUEUING THEM EVEN THOUGH I SET BUSYACTION TO CANCEL
@@ -274,6 +308,13 @@ elseif strcmp(callbackdata.Key,'leftarrow')
         return;
     end
     handles=changeFrame(handles,handles.UserData.currentFrameInd-1,true);
+    
+    %if the selected marker is set to freeze, set the est position for that
+    %marker
+    if handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).freezeSeg
+        handles = setFreezePos(handles, -1);
+        handles=drawMarkersAndSegments(handles);
+    end
     
 elseif strcmp(callbackdata.Key,'uparrow')
     %go to marker one up on the list
@@ -735,7 +776,10 @@ end
 % get marker data
 markersPos=squeeze(handles.UserData.trackedData(:,handles.UserData.currentFrameInd,:));
 markerBoxSize=round(squeeze(handles.UserData.trackedBoxSizes(...
-        handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:))/2);
+    handles.UserData.currentMarkerInds(1),handles.UserData.currentFrameInd,:))/2);
+if any(isnan(markerBoxSize))
+    markerBoxSize = handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).guessSize/2;
+end
 markersPosEst=squeeze(handles.UserData.modelEstData(:,handles.UserData.currentFrameInd,:));
 
 % for zoomed in frames
@@ -785,6 +829,17 @@ allMarkersYData = markersPosZoom(:,2);
 estMarkersXData = markersPosEstZoom(:,1);
 estMarkersYData = markersPosEstZoom(:,2);
 
+% don't plot estimated markers if the marker is tracked
+estMarkersXData(find(~isnan(allMarkersXData))) = nan;
+estMarkersYData(find(~isnan(allMarkersYData))) = nan;
+
+% don't plot estimates if told not to
+if handles.UserData.showMarkerEsts
+    plotEsts = 'On';
+else
+    plotEsts = 'Off';
+end
+
 % now for the marker box
 if markerExists
     
@@ -823,6 +878,11 @@ if isempty(handles.UserData.currentMarkers_h) || callPlotFunctions
     axes(handles.FrameAxes)
     hold on
     
+    %delete old plots
+    delete(handles.UserData.currentMarkers_h);
+    delete(handles.UserData.estimatedMarkers_h);
+    delete(handles.UserData.selection_h);
+    
     %plot the tracked points
     handles.UserData.currentMarkers_h = plot(allMarkersXData, ...
         allMarkersYData, 'o', ...
@@ -837,6 +897,7 @@ if isempty(handles.UserData.currentMarkers_h) || callPlotFunctions
         'MarkerSize',handles.UserData.plotMarkerEstSize,...
         'MarkerEdgeColor','k',...
         'MarkerFaceColor',handles.UserData.plotMarkerEstColor,...
+        'Visible', plotEsts,...
         'PickableParts','none');
 
     %put current marker selection cursor
@@ -867,6 +928,7 @@ else
     
     handles.UserData.estimatedMarkers_h.XData = estMarkersXData;
     handles.UserData.estimatedMarkers_h.YData = estMarkersYData;
+    handles.UserData.estimatedMarkers_h.Visible = plotEsts;
     
     handles.UserData.selection_h.XData = currentMarkersXData;
     handles.UserData.selection_h.YData = currentMarkersYData;
@@ -886,7 +948,10 @@ if handles.UserData.drawStickFigure
     
     if ~isempty(handles.UserData.segments)
         
-        markersPosZoom(isnan(markersPosZoom(:,1)),:)=markersPosEstZoom(isnan(markersPosZoom(:,1)),:);
+        %draw segments to estimated data or not
+        if handles.UserData.showMarkerEsts
+            markersPosZoom(isnan(markersPosZoom(:,1)),:)=markersPosEstZoom(isnan(markersPosZoom(:,1)),:);
+        end
         segmentXs=[markersPosZoom(handles.UserData.segments(:,1),1)'; markersPosZoom(handles.UserData.segments(:,2),1)'];
         segmentYs=[markersPosZoom(handles.UserData.segments(:,1),2)'; markersPosZoom(handles.UserData.segments(:,2),2)'];
         
@@ -894,9 +959,15 @@ if handles.UserData.drawStickFigure
             %stick plot handle hasn't been defined yet, use line()
             
             axes(handles.FrameAxes)
-            hold on
+            
+            %delete old line segments
+            for iLine=1:length(handles.UserData.stick_h)
+                delete(handles.UserData.stick_h(iLine));
+            end
             
             %draw line segments
+            hold on
+            
             handles.UserData.stick_h=line(segmentXs,segmentYs,'linewidth',handles.UserData.plotSegmentWidth,...
                 'color',handles.UserData.plotSegmentColor,'PickableParts','none');
             
@@ -1079,6 +1150,7 @@ handles.MarkerTypeSelect.Value=find(strcmpi(handles.UserData.markersInfo(...
 
 handles.UsePredictiveModelCheckBox.Value=handles.UserData.markersInfo(markerInds(1)).usePredModel;
 handles.UseKinematicModelCheckBox.Value=handles.UserData.markersInfo(markerInds(1)).useKinModel;
+handles.FreezeSegmentCheckBox.Value=handles.UserData.markersInfo(markerInds(1)).freezeSeg;
 
 handles.SearchRadiusInput.String=...
     num2str(handles.UserData.markersInfo(markerInds(1)).searchRadius);
@@ -1829,6 +1901,62 @@ else
 end
 
 
+function handles = setFreezePos(handles, relativeFrame)
+% function to set the marker position estimate based on the angle and
+% distance to an anchor point for the currently selected marker
+
+% no anchor defined for currently selected marker
+currentMarkerInd = handles.UserData.currentMarkerInds(1);
+anchorInd = handles.UserData.markersInfo(currentMarkerInd).freezeSegAnchor;
+if isempty(anchorInd)
+    return
+end
+
+% get the data or the est data for the selected marker and the anchor
+% marker from the relative frame
+anchorFrame = handles.UserData.currentFrameInd - relativeFrame;
+prevSelectedMarkerData = handles.UserData.trackedData(currentMarkerInd, anchorFrame, :);
+if any(isnan(prevSelectedMarkerData))
+    %get est data since marker isn't tracked
+    prevSelectedMarkerData = handles.UserData.modelEstData(currentMarkerInd, anchorFrame, :);
+end
+
+% same for anchor marker
+prevAnchorMarkerData = handles.UserData.trackedData(anchorInd, anchorFrame, :);
+if any(isnan(prevAnchorMarkerData))
+    %get est data since marker isn't tracked
+    prevAnchorMarkerData = handles.UserData.modelEstData(anchorInd, anchorFrame, :);
+end
+
+% if either the selected or anchor marker doesn't have data or estimate in
+% the relative frame, then can't freeze segment
+if any(isnan(prevAnchorMarkerData)) || any(isnan(prevSelectedMarkerData))
+    return
+end
+
+% get the current data of the anchor point (or the estimate)
+currentAnchorData =  handles.UserData.trackedData(anchorInd, handles.UserData.currentFrameInd, :);
+if any(isnan(currentAnchorData))
+    %get est data since marker isn't tracked
+    currentAnchorData = handles.UserData.modelEstData(anchorInd, handles.UserData.currentFrameInd, :);
+end
+
+% if anchor point doesn't have any data or estimate in the current frame,
+% then we also can't freeze segment
+if any(isnan(currentAnchorData))
+    return
+end
+
+% calculate the offset between the anchor and selected marker in the anchor
+% frame
+offset = prevSelectedMarkerData - prevAnchorMarkerData;
+
+% set the current selected marker's estimate to the same offset
+handles.UserData.modelEstData(currentMarkerInd, handles.UserData.currentFrameInd, :) = ...
+    currentAnchorData + offset;
+
+
+
 
 % --- Outputs from this function are returned to the command line.
 function varargout = MarkerTracker_OutputFcn(hObject, eventdata, handles) 
@@ -1839,6 +1967,7 @@ function varargout = MarkerTracker_OutputFcn(hObject, eventdata, handles)
 
 % Get default command line output from handles structure
 varargout{1} = handles.output;
+
 
 
 % --- Executes on slider movement.
@@ -1927,6 +2056,7 @@ end
 value=str2double(get(hObject,'String'));
 if isnan(value) || value<=0 || value>handles.UserData.nFrames
     warndlg(['Frame must be a number between 0 and ' num2str(handles.UserData.nFrames)]);
+    hObject.String = num2str(handles.UserData.currentFrameInd);
 else
     if handles.UserData.videoLoaded
         handles=changeFrame(handles,value,true);
@@ -2036,8 +2166,82 @@ if (ind==1)
         
         %data from a previous session, just put to UserData and do checks
         % TODO: Checks+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                
+        %in case the save file was using an older version of the tracker,
+        %and some UserData fields are missing, set them to the default
+        %values here
+        requiredFields = fieldnames(handles.UserData);
+        addedFields = string();
+        for iField = 1:length(requiredFields)
+            
+            if ~isfield(vars.MARKERTRACKERGUI_UserData, requiredFields{iField})
+               
+                addedFields(end+1) = requiredFields{iField};
+                vars.MARKERTRACKERGUI_UserData.(requiredFields{iField}) = ...
+                    handles.UserData.(requiredFields{iField});
+                
+            end
+            
+        end
+        
+        if length(addedFields)>1
+            warndlg(sprintf(['Save file was from a previous version, added the following fields to UserData: ',...
+                char(join(addedFields,' \r \n '))]))
+        end
+        
+        %add fields to markersinfo
+        defaultMarker = setMarkerDefaults({'default'}, 1, handles);
+        markerFields = fieldnames(defaultMarker);
+        
+        addedFields = string();
+        for iField = 1:length(markerFields)
+            
+            if ~isfield(vars.MARKERTRACKERGUI_UserData.markersInfo, markerFields{iField})
+               
+                addedFields(end+1) = markerFields{iField};
+                
+                for iMarker = 1:vars.MARKERTRACKERGUI_UserData.nMarkers
+                    vars.MARKERTRACKERGUI_UserData.markersInfo(iMarker).(markerFields{iField}) = ...
+                        defaultMarker.(markerFields{iField});
+                end
+                
+            end
+            
+        end
+        
+        if length(addedFields)>1
+            warndlg(sprintf(['Save file was from a previous version, added the following fields to markersInfo: ',...
+                char(join(addedFields,' \r \n '))]))
+        end
+        
+        %finally, once everything has been updated, save to UserData
         handles.UserData=vars.MARKERTRACKERGUI_UserData;
         
+        %if path to the video file isn't correct (i.e. copied the same file
+        %from a different computer), then ask user to select new video file
+        try
+            handles.UserData.videoReader.NumFrames;
+        catch
+            [videoPath videoFile] = fileparts(handles.UserData.videoFile);
+            warndlg(sprintf('Video file %s not found in %s, please re-select video file', videoFile, videoPath))
+            
+            [file,path] = uigetfile({'*.avi';'*.mp4'});
+            if file==0
+                warndlg('Unable to load video!')
+                return;
+            end
+            
+            % udpate video reader
+            handles.UserData.videoFile=fullfile(path,file);
+            try
+                handles.UserData.videoReader=VideoReader(handles.UserData.videoFile);
+            catch
+                warndlg('Unable to load video!')
+                return;
+            end
+            
+        end
+
         %set all the drawing handles (plots, image, patches, ect) to empty
         %since those have been deleted, and will force a redraw of those
         %handles
@@ -2060,6 +2264,9 @@ if (ind==1)
         handles=changeFrame(handles,loadedFrameInd,true);
         handles=changeSelectedMarkers(handles,handles.UserData.currentMarkerInds);
         handles=drawEpochBar(handles, true);
+        handles.FrameJumpAmountBox.String=num2str(handles.UserData.frameJumpAmount);
+        handles.FrameSlider.SliderStep = [1/handles.UserData.nFrames ...
+            handles.UserData.frameJumpAmount/handles.UserData.nFrames];
         
         %if for kin models, if defined and/or trained, set background of
         %the buttons to green
@@ -2075,32 +2282,17 @@ if (ind==1)
         handles.UserData.lastSavedTime=timeInfo(4)*60+timeInfo(5);
         
     elseif isfield(vars,'MARKERTRACKERGUI_MarkerNames')
-       
+        
         %not data from previous session, just want to initialize markers
         handles.UserData.nMarkers=length(vars.MARKERTRACKERGUI_MarkerNames);
         
         for iMarker=1:handles.UserData.nMarkers
-            markers(iMarker).name=vars.MARKERTRACKERGUI_MarkerNames{iMarker};
-            markers(iMarker).UIListInd=iMarker;
-            markers(iMarker).trackType='manual';
-            markers(iMarker).usePredModel=false;
-            markers(iMarker).useKinModel=false;
-            markers(iMarker).searchRadius=10;
-            markers(iMarker).guessSize=handles.UserData.defaultMarkerSize;
-            markers(iMarker).modelParams=[];
             
-            markers(iMarker).searchProperties.useChannels=zeros(handles.UserData.nColorChannels,1);
-            markers(iMarker).searchProperties.thresholds=[zeros(handles.UserData.nColorChannels,1),...
-            ones(handles.UserData.nColorChannels,1)*255];
-            markers(iMarker).searchProperties.useContrastEnhancement=zeros(handles.UserData.nColorChannels,1);
-            markers(iMarker).searchProperties.blobSizes=[];
-            markers(iMarker).searchProperties.maxAspectRatio=5;
-            markers(iMarker).searchProperties.minArea=0;
-            
-            markers(iMarker).kinModelAnchors={};
-            markers(iMarker).kinModelAngleTol=handles.UserData.kinModel.defaultAngleTol;
+            markers(iMarker) = setMarkerDefaults(vars.MARKERTRACKERGUI_MarkerNames{iMarker}, ...
+                iMarker, handles);
+
         end
-        handles.UserData.markersInfo=markers;
+        handles.UserData.markersInfo = markers;
         
         %set kin model possible anchors to marker names
         handles.UserData.kinModel.allPossibleAnchors={handles.UserData.markersInfo.name}';
@@ -2194,26 +2386,10 @@ elseif (ind==2)
         % fill marker structure to hold info for each joint marker with default
         % values
         for iMarker=1:length(fileMarkerNames)
-            markers(iMarker).name=fileMarkerNames{iMarker};
-            markers(iMarker).UIListInd=iMarker;
-            markers(iMarker).trackType='manual';
-            markers(iMarker).usePredModel=false;
-            markers(iMarker).useKinModel=false;
-            markers(iMarker).searchRadius=10;
-            markers(iMarker).guessSize=handles.UserData.defaultMarkerSize;
-            markers(iMarker).modelParams=[];
             
-            markers(iMarker).searchProperties.useChannels=zeros(handles.UserData.nColorChannels,1);
-            markers(iMarker).searchProperties.thresholds=[zeros(handles.UserData.nColorChannels,1),...
-                ones(handles.UserData.nColorChannels,1)*255];
-            markers(iMarker).searchProperties.useContrastEnhancement=zeros(handles.UserData.nColorChannels,1);
-            markers(iMarker).searchProperties.blobSizes=[];
-            markers(iMarker).searchProperties.maxAspectRatio=5;
-            markers(iMarker).searchProperties.minArea=0;
-            
-            markers(iMarker).kinModelAnchors={};
-            markers(iMarker).kinModelAngleTol=handles.UserData.kinModel.defaultAngleTol;
-            
+            markers(iMarker) = setMarkerDefaults(fileMarkerNames{iMarker}, ...
+                iMarker, handles);
+
         end
         handles.UserData.markersInfo=markers;
         handles.UserData.nMarkers=length(fileMarkerNames);
@@ -4019,6 +4195,122 @@ handles = drawFrame(handles);
 handles = drawMarkersAndSegments(handles);
 
 guidata(hObject,handles)
+
+
+
+% --- Executes on button press in FreezeSegmentCheckBox.
+function FreezeSegmentCheckBox_Callback(hObject, eventdata, handles)
+% hObject    handle to FreezeSegmentCheckBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of FreezeSegmentCheckBox
+handles=guidata(hObject);
+
+for iMarker=1:length(handles.UserData.currentMarkerInds)
+    
+    handles.UserData.markersInfo(handles.UserData.currentMarkerInds(iMarker)).freezeSeg = ...
+        get(hObject,'Value');
+    
+end
+
+guidata(hObject,handles);
+
+
+
+% --- Executes on button press in FreezeSegmentAnchorButton.
+function FreezeSegmentAnchorButton_Callback(hObject, eventdata, handles)
+% hObject    handle to FreezeSegmentAnchorButton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+handles=guidata(hObject);
+
+% which marker is currently selected
+currentMarkerInd = handles.UserData.currentMarkerInds(1);
+
+% need to have segments defined
+if isempty(handles.UserData.segments)
+    warndlg('No segments loaded!');
+    return
+end
+
+% markers that is connected to the current marker
+connectedMarkerInds = [handles.UserData.segments(handles.UserData.segments(:,1) == currentMarkerInd, 2); ...
+    handles.UserData.segments(handles.UserData.segments(:,2) == currentMarkerInd, 1)];
+
+if isempty(connectedMarkerInds)
+    warndlg('No connected markers for selected marker found!');
+    return
+end
+
+listNames = {handles.UserData.markersInfo(connectedMarkerInds).name};
+
+[selection, madeSelection] = listdlg('PromptString','Select Anchor point: ',...
+                      'SelectionMode','single',...
+                      'ListString',listNames);
+
+if ~madeSelection
+    return
+end
+
+handles.UserData.markersInfo(currentMarkerInd).freezeSegAnchor = connectedMarkerInds(selection);
+
+guidata(hObject,handles);
+
+
+
+function FrameJumpAmountBox_Callback(hObject, eventdata, handles)
+% hObject    handle to FrameJumpAmountBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of FrameJumpAmountBox as text
+%        str2double(get(hObject,'String')) returns contents of FrameJumpAmountBox as a double
+handles=guidata(hObject);
+if (~handles.UserData.videoLoaded)
+    return;
+end
+
+value = str2double(get(hObject,'String'));
+if isnan(value) || value<=0 || value>handles.UserData.nFrames
+    warndlg(['Frame jump amount must be a number between 0 and ' num2str(handles.UserData.nFrames)]);
+    hObject.String = num2str(handles.UserData.frameJumpAmount);
+else
+    handles.UserData.frameJumpAmount = value;
+    handles.FrameSlider.SliderStep = [1/handles.UserData.nFrames value/handles.UserData.nFrames];
+end
+
+guidata(hObject,handles)
+
+
+
+% --- Executes during object creation, after setting all properties.
+function FrameJumpAmountBox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to FrameJumpAmountBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+% --- Executes on button press in ShowEstimatesCheckBox.
+function ShowEstimatesCheckBox_Callback(hObject, eventdata, handles)
+% hObject    handle to ShowEstimatesCheckBox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of ShowEstimatesCheckBox
+handles=guidata(hObject);
+
+handles.UserData.showMarkerEsts=hObject.Value;
+handles=drawMarkersAndSegments(handles, true);
+
+guidata(hObject, handles);
 
 
 
