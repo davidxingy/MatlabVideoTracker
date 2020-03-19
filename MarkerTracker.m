@@ -264,7 +264,8 @@ if ~handles.UserData.videoLoaded
 end
 
 if ~strcmp(callbackdata.Key,'rightarrow') && ~strcmp(callbackdata.Key,'leftarrow') &&...
-        ~strcmp(callbackdata.Key,'uparrow') && ~strcmp(callbackdata.Key,'downarrow')
+        ~strcmp(callbackdata.Key,'uparrow') && ~strcmp(callbackdata.Key,'downarrow') &&...
+        ~strcmp(callbackdata.Key,'add') && ~strcmp(callbackdata.Key,'subtract')
     return
 end
 
@@ -284,18 +285,21 @@ if strcmp(callbackdata.Key,'rightarrow')
     end
     handles=changeFrame(handles,handles.UserData.currentFrameInd+1,true);
     
-    %update markers that are set to 'auto'
     if handles.UserData.dataInitialized
+        
+        %update markers that are set to 'auto'
         handles=autoIncrementMarkers(handles);
+        
+        %if the selected marker is set to freeze, set the est position for that
+        %marker
+        if handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).freezeSeg
+            handles = setFreezePos(handles, 1);
+        end
+        
+        handles=drawMarkersAndSegments(handles);
+        
     end
     
-    %if the selected marker is set to freeze, set the est position for that
-    %marker
-    if handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).freezeSeg
-        handles = setFreezePos(handles, 1);
-    end
-    
-    handles=drawMarkersAndSegments(handles);
     %FOR SOME REASON IF I DON'T PUT A PAUSE HERE IT WILL CONTINUE READING
     %KEY STROKES AND QUEUING THEM EVEN THOUGH I SET BUSYACTION TO CANCEL
     %RATHER THAN QUEUE
@@ -311,9 +315,11 @@ elseif strcmp(callbackdata.Key,'leftarrow')
     
     %if the selected marker is set to freeze, set the est position for that
     %marker
-    if handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).freezeSeg
-        handles = setFreezePos(handles, -1);
-        handles=drawMarkersAndSegments(handles);
+    if handles.UserData.dataInitialized
+        if handles.UserData.markersInfo(handles.UserData.currentMarkerInds(1)).freezeSeg
+            handles = setFreezePos(handles, -1);
+            handles=drawMarkersAndSegments(handles);
+        end
     end
     
 elseif strcmp(callbackdata.Key,'uparrow')
@@ -322,12 +328,28 @@ elseif strcmp(callbackdata.Key,'uparrow')
     ScrollWheel_Callback([],tmpCallbackData,hObject)
     setappdata(handles.figure1,'evaluatingKeyPress',false)
     return %return now since the callback already updated handles
+    
 elseif strcmp(callbackdata.Key,'downarrow')
     %go to marker one up on the list
     tmpCallbackData.VerticalScrollCount=1;
     ScrollWheel_Callback([],tmpCallbackData,hObject)
     setappdata(handles.figure1,'evaluatingKeyPress',false)
     return %return now since the callback already updated handles
+    
+elseif strcmp(callbackdata.Key,'add')
+    %jump forward some number of frames
+    handles=changeFrame(handles,min([handles.UserData.currentFrameInd+...
+        handles.UserData.frameJumpAmount, handles.UserData.nFrames]),true);
+    
+elseif strcmp(callbackdata.Key,'subtract')
+    %jump back some number of frames
+    if handles.UserData.currentFrameInd==1
+        setappdata(handles.figure1,'evaluatingKeyPress',false)
+        return;
+    end
+    handles=changeFrame(handles,max([handles.UserData.currentFrameInd-...
+        handles.UserData.frameJumpAmount, 1]),true);
+    
 end
 
 % handles.UserData.keypressCallbackRunning=false;
@@ -2892,12 +2914,6 @@ hObject.BackgroundColor=[0.9400 0.9400 0.9400];
 
 guidata(hObject,handles);
 
-function handles=testfunc(handles)
-axes(handles.FrameAxes)
-% hold on
-% plot(500,500,'*')
-% hold off
-% pause(1)
 
 
 % --- Executes on button press in DeletePointButton.
