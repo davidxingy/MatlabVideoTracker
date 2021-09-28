@@ -91,7 +91,7 @@ function MarkerTracker_OpeningFcn(hObject, eventdata, handles, varargin)
 handles.output = hObject;
 
 % GUI general settings
-handles.UserData.VersionNumber = '4.0';
+handles.UserData.VersionNumber = '4.1';
 
 handles.UserData.bufferSize = 30;
 handles.UserData.autosaveIntervalMin = 3;
@@ -129,6 +129,9 @@ handles.UserData.minConvex = 0.8; %minimun ratio of area to convext area of blob
 
 handles.UserData.lengthOutlierMult = 1.3; %multiplier to determine the maximum length between pairs in kin model
 handles.UserData.maxJumpMult = 2; %multiplier to determine the maximum allowable jumps
+
+handles.UserData.vidTimeTolerance = 1e-5; %Sometimes there's precision errors when getting current time from the vid reader,
+                                          %set tolerance for the error here
 
 % Some developer options
 handles.GUIOptions.plotPredLocs = false;
@@ -538,13 +541,18 @@ else
     %variable frame rates which sometimes results in wrong frame read 
     %if I just try to jump directly to a frame with CurrentTime.
     handles.UserData.videoReader.CurrentTime=max((frameNumber-2)/handles.UserData.frameRate,0);
-    while handles.UserData.videoReader.CurrentTime~=(frameNumber-1)/handles.UserData.frameRate
+    while abs(handles.UserData.videoReader.CurrentTime-(frameNumber-1)/handles.UserData.frameRate) > ...
+            handles.UserData.vidTimeTolerance
+        
         frame=handles.UserData.videoReader.readFrame;
         
-        if handles.UserData.videoReader.CurrentTime>(frameNumber-1)/handles.UserData.frameRate
+        if (handles.UserData.videoReader.CurrentTime-(frameNumber-1)/handles.UserData.frameRate) > ...
+                handles.UserData.vidTimeTolerance
+            
             setappdata(handles.figure1,'evaluatingKeyPress',false)
             disp(['Failed to move to frame ' num2str(frameNumber)])
             return;
+            
         end
         
     end
