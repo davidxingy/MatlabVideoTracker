@@ -268,7 +268,7 @@ end
 
 if ~strcmp(callbackdata.Key,'rightarrow') && ~strcmp(callbackdata.Key,'leftarrow') &&...
         ~strcmp(callbackdata.Key,'uparrow') && ~strcmp(callbackdata.Key,'downarrow') &&...
-        ~strcmp(callbackdata.Key,'add') && ~strcmp(callbackdata.Key,'subtract')
+        ~strcmp(callbackdata.Key,'p') && ~strcmp(callbackdata.Key,'o')
     return
 end
 
@@ -339,12 +339,12 @@ elseif strcmp(callbackdata.Key,'downarrow')
     setappdata(handles.figure1,'evaluatingKeyPress',false)
     return %return now since the callback already updated handles
     
-elseif strcmp(callbackdata.Key,'add')
+elseif strcmp(callbackdata.Key,'p')
     %jump forward some number of frames
     handles=changeFrame(handles,min([handles.UserData.currentFrameInd+...
         handles.UserData.frameJumpAmount, handles.UserData.nFrames]),true);
     
-elseif strcmp(callbackdata.Key,'subtract')
+elseif strcmp(callbackdata.Key,'o')
     %jump back some number of frames
     if handles.UserData.currentFrameInd==1
         setappdata(handles.figure1,'evaluatingKeyPress',false)
