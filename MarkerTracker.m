@@ -742,6 +742,9 @@ handles.FrameNumberBox.String=num2str(frameNumber);
 % update epoch bar
 handles=drawEpochBar(handles, false);
 
+% update external listeners
+setappdata(0,'MarkerTrackerFrameInd',handles.UserData.currentFrameInd)
+
 
 function handles = drawFrame(handles, varargin)
 
