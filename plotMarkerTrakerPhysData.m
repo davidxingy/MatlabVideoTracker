@@ -76,6 +76,8 @@ for iPlot = 1:length(physData)
         case 'time stamps'
             defaultLabels{iPlot} = join([repmat("ch",1,length(physData{iPlot}))' ...
                 string(1:length(physData{iPlot}))'],'');
+        otherwise
+            defaultLabels{iPlot} = {};
     end
 end
 
@@ -134,7 +136,7 @@ timeStampsInds = find(strcmpi(physDataType,'time stamps'));
 nTimeStampsData = length(timeStampsInds);
 
 if(nTimeStampsData + nTimeSeriesData ~= length(physData))
-    error('Must use either ''time series'' or ''time stamps'' for physDataType!')
+%     error('Must use either ''time series'' or ''time stamps'' for physDataType!')
 end
 
 nDataSets = length(physData);
@@ -160,32 +162,40 @@ for iPlot = 1:nDataSets
     
     nexttile
     
-    switch physDataType{iPlot}
-        case 'time series'
-            %just use blank plots as placeholders for now
-            for iChan = 1:size(physData{iPlot},1)
-                plotHs{iPlot}(iChan) = plot(nan,'LineWidth',2);
-                hold on
-            end
-            
-        case 'time stamps'
-            %just use blank plots as placeholders for now
-            plotHs{iPlot} = scatter(nan,nan,'.k','sizedata', 50);
+    if ~strcmpi(physDataType{iPlot},'custom')
+        switch physDataType{iPlot}
+            case 'time series'
+                %just use blank plots as placeholders for now
+                for iChan = 1:size(physData{iPlot},1)
+                    plotHs{iPlot}(iChan) = plot(nan,'LineWidth',2);
+                    hold on
+                end
+
+            case 'time stamps'
+                %just use blank plots as placeholders for now
+                plotHs{iPlot} = scatter(nan,nan,'.k','sizedata', 50);
+
+        end
+        line([0 0],yAxLims(iPlot,:),'color','r','linestyle','--')
+        hold off
+
+        axesHs(iPlot) = gca;
+        box off
+
+        %set channel labels
+        set(gca,'YLim',yAxLims(iPlot,:));
+        set(gca,'YTick',offsets(iPlot)*(0:(size(physData{iPlot},1)-1)));
+        set(gca,'YTickLabel',physDataLabels{iPlot})
+        set(gca,'XLim',[-1*plotRange(1) plotRange(2)]);
+        set(gca,'LineWidth',2)
+        set(gca,'FontSize',15)
+
+    else
+
+        [plotHs{iPlot} customPlotVars{iPlot}] = plotFunctionHandle{iPlot}([],true);
+        axesHs(iPlot) = gca;
 
     end
-    line([0 0],yAxLims(iPlot,:),'color','r','linestyle','--')
-    hold off
-    
-    axesHs(iPlot) = gca;
-    box off
-    
-    %set channel labels
-    set(gca,'YLim',yAxLims(iPlot,:));
-    set(gca,'YTick',offsets(iPlot)*(0:(size(physData{iPlot},1)-1)));
-    set(gca,'YTickLabel',physDataLabels{iPlot})
-    set(gca,'XLim',[-1*plotRange(1) plotRange(2)]);
-    set(gca,'LineWidth',2)
-    set(gca,'FontSize',15)
     
 end
 
@@ -201,13 +211,13 @@ vidListener = addlistener(markerTrakerHandle.Children(46),'String','PostSet',@up
         for iPlot = 1:nDataSets
 
 %             axes(plotHs(iPlot));
-
-            %get the sample and window corresponding to the current frame
-            currentSample = videoPhysSync{iPlot}(currentFrame);
                         
             switch physDataType{iPlot}
                 case 'time series'
                     
+                    %get the sample and window corresponding to the current frame
+                    currentSample = videoPhysSync{iPlot}(currentFrame);
+
                     %get section of data corresponding to this frame
                     windowInds = [max([1 currentSample-physSampleRate(iPlot)*plotRange(1)/1000]) ...
                         min([size(physData{iPlot},2) currentSample+physSampleRate(iPlot)/1000*plotRange(2)])];
@@ -226,6 +236,9 @@ vidListener = addlistener(markerTrakerHandle.Children(46),'String','PostSet',@up
 
                 case 'time stamps'
                     
+                    %get the sample and window corresponding to the current frame
+                    currentSample = videoPhysSync{iPlot}(currentFrame);
+
                     %get data range
                     windowInds = [max([1 currentSample-physSampleRate(iPlot)*plotRange(1)/1000]) ...
                         min([max(cat(1,physData{iPlot}{:})) currentSample+physSampleRate(iPlot)/1000*plotRange(2)])];
@@ -246,7 +259,10 @@ vidListener = addlistener(markerTrakerHandle.Children(46),'String','PostSet',@up
                     scatterY = [chanHeights{:}]';
                     set(plotHs{iPlot},'XData',scatterX);
                     set(plotHs{iPlot},'YData',scatterY);
-                                                               
+                                                              
+                case 'custom'
+                    plotFunctionHandle{iPlot}(currentFrame,false,customPlotVars{iPlot})
+
             end
             
             
